@@ -495,6 +495,74 @@ def debug_routes():
         'routes': routes
     }), 200
 
+# Search Documents API
+@main.route('/search', methods=['GET'])
+def search_page():
+    """Render search page"""
+    return render_template('search.html')
+
+@main.route('/api/search-documents', methods=['POST'])
+def search_documents():
+    """Search documents using external search service"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data or 'keyword' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Keyword is required'
+            }), 400
+        
+        # Prepare search request
+        search_request = {
+            'keyword': data['keyword'],
+            'limit': data.get('limit', 10),
+            'min_score': data.get('min_score', 0.6),
+            'include_content': data.get('include_content', True),
+            'boost_recent': data.get('boost_recent', True)
+        }
+        
+        # Call external search service
+        import requests
+        search_url = 'http://37.27.181.54:5009/search/relevant/advanced'
+        
+        response = requests.post(
+            search_url,
+            json=search_request,
+            headers={'Content-Type': 'application/json'},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            search_data = response.json()
+            return jsonify({
+                'success': True,
+                'data': search_data
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Search service returned status {response.status_code}'
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'success': False,
+            'error': 'Search request timed out'
+        }), 408
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            'success': False,
+            'error': 'Unable to connect to search service'
+        }), 503
+    except Exception as e:
+        print(f"Search error: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error during search'
+        }), 500
+
 # Crawl Videos API
 @main.route('/api/crawl-videos', methods=['POST'])
 def crawl_videos():
