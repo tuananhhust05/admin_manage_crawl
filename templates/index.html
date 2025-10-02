@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Channels Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fab fa-youtube"></i>
+                    <h1>YouTube Channels</h1>
+                </div>
+                <button class="btn btn-primary" id="addChannelBtn">
+                    <i class="fas fa-plus"></i>
+                    Add Channel
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fab fa-youtube"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="totalChannels">0</h3>
+                        <p>Total Channels</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="totalSubscribers">0</h3>
+                        <p>Total Subscribers</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-video"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="totalVideos">0</h3>
+                        <p>Total Videos</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Channels List -->
+            <div class="channels-section">
+                <div class="section-header">
+                    <h2>YouTube Channels</h2>
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Search channels...">
+                    </div>
+                </div>
+
+                <div class="channels-grid" id="channelsGrid">
+                    <!-- Channels will be loaded here -->
+                </div>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Loading data...</p>
+                </div>
+
+                <div class="empty-state" id="emptyState" style="display: none;">
+                    <i class="fab fa-youtube"></i>
+                    <h3>No channels yet</h3>
+                    <p>Add your first YouTube channel to get started</p>
+                    <button class="btn btn-primary" onclick="showAddChannelModal()">
+                        <i class="fas fa-plus"></i>
+                        Add Channel
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add Channel Modal -->
+    <div class="modal" id="addChannelModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add YouTube Channel</h2>
+                <button class="close-btn" onclick="closeAddChannelModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="addChannelForm" class="modal-body">
+                <div class="form-group">
+                    <label for="channelUrl">YouTube Channel URL *</label>
+                    <input type="url" id="channelUrl" name="url" placeholder="https://www.youtube.com/@channelname" required>
+                    <small>Example: https://www.youtube.com/@channelname</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="channelId">Channel ID *</label>
+                    <input type="text" id="channelId" name="channel_id" placeholder="UCxxxxxxxxxxxxxxxxxxxxx" required>
+                    <small>Unique YouTube channel identifier</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="channelTitle">Channel Name</label>
+                    <input type="text" id="channelTitle" name="title" placeholder="YouTube channel name">
+                </div>
+
+                <div class="form-group">
+                    <label for="channelDescription">Description</label>
+                    <textarea id="channelDescription" name="description" placeholder="Channel description" rows="3"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="subscriberCount">Subscriber Count</label>
+                        <input type="number" id="subscriberCount" name="subscriber_count" placeholder="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="videoCount">Video Count</label>
+                        <input type="number" id="videoCount" name="video_count" placeholder="0" min="0">
+                    </div>
+                </div>
+            </form>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeAddChannelModal()">Cancel</button>
+                <button type="submit" form="addChannelForm" class="btn btn-primary">
+                    <i class="fas fa-plus"></i>
+                    Add Channel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

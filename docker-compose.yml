@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: playfantasy365_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: playfantasy365
+    ports:
+      - "27019:27017"
+    volumes:
+      - ./data/mongodb:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    networks:
+      - playfantasy365_network
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "admin", "-p", "password123", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+  # Flask API
+  api:
+    build: .
+    container_name: playfantasy365_api
+    restart: unless-stopped
+    environment:
+      - FLASK_ENV=production
+      - MONGO_URI=mongodb://admin:password123@mongodb:27017/playfantasy365?authSource=admin
+      - SECRET_KEY=your-super-secret-key-change-in-production
+      - PORT=5001
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+    ports:
+      - "5001:5001"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - playfantasy365_network
+    volumes:
+      - ./:/app
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+networks:
+  playfantasy365_network:
+    driver: bridge

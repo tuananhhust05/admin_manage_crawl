@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Channel Details - YouTube Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <a href="/youtube-channels" class="back-btn">
+                        <i class="fas fa-arrow-left"></i>
+                    </a>
+                    <i class="fab fa-youtube"></i>
+                    <h1 id="channelTitle">Channel Details</h1>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="crawlVideosBtn">
+                        <i class="fas fa-download"></i>
+                        Crawl 10 Latest Videos
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.history.back()">
+                        <i class="fas fa-arrow-left"></i>
+                        Back
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Channel Info -->
+        <div class="channel-info-section">
+            <div class="channel-info-card">
+                <div class="channel-header">
+                    <div class="channel-avatar">
+                        <i class="fab fa-youtube"></i>
+                    </div>
+                    <div class="channel-details">
+                        <h2 id="channelName">Loading...</h2>
+                        <p id="channelUrl" class="channel-url">Loading...</p>
+                        <p id="channelDescription" class="channel-description">Loading...</p>
+                    </div>
+                </div>
+                <div class="channel-stats">
+                    <div class="stat-item">
+                        <span class="number" id="subscriberCount">0</span>
+                        <span class="label">Subscribers</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="number" id="videoCount">0</span>
+                        <span class="label">Videos</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="number" id="crawledVideos">0</span>
+                        <span class="label">Crawled Videos</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Videos Section -->
+        <div class="videos-section">
+            <div class="section-header">
+                <h2>Videos</h2>
+                <div class="video-filters">
+                    <select id="statusFilter" class="filter-select">
+                        <option value="">All Status</option>
+                        <option value="0">Pending</option>
+                        <option value="1">Processed</option>
+                        <option value="2">Error</option>
+                    </select>
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="videoSearchInput" placeholder="Search videos...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="videos-grid" id="videosGrid">
+                <!-- Videos will be loaded here -->
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Loading videos...</p>
+            </div>
+
+            <div class="empty-state" id="emptyState" style="display: none;">
+                <i class="fas fa-video"></i>
+                <h3>No videos found</h3>
+                <p>Click "Crawl 10 Latest Videos" to start collecting videos from this channel</p>
+                <button class="btn btn-primary" id="crawlVideosBtnEmpty">
+                    <i class="fas fa-download"></i>
+                    Crawl Videos
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/channel_detail.js') }}"></script>
+</body>
+</html>

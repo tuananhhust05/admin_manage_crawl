@@ -1,0 +1,2 @@
+# Thư mục này chứa dữ liệu MongoDB được mount từ container
+# Thư mục mongodb/ sẽ được tạo tự động khi chạy container
