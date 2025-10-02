@@ -1,5 +1,4 @@
-version: '3.8'
-
+# Bỏ dòng 'version: 3.8' vì nó đã lỗi thời
 services:
   # MongoDB Database
   mongodb:
@@ -8,7 +7,8 @@ services:
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password123
+      # Lấy mật khẩu từ file .env để bảo mật hơn
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD} 
       MONGO_INITDB_DATABASE: playfantasy365
     ports:
       - "27019:27017"
@@ -18,12 +18,17 @@ services:
     networks:
       - playfantasy365_network
     healthcheck:
-      test: ["CMD", "mongosh", "-u", "admin", "-p", "password123", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      # <<< SỬA LỖI Ở ĐÂY
+      test: >
+        mongosh --quiet
+        --username admin
+        --password ${MONGO_ROOT_PASSWORD}
+        --authenticationDatabase admin
+        --eval "db.adminCommand('ping')"
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-
 
   # Flask API
   api:
@@ -32,7 +37,8 @@ services:
     restart: unless-stopped
     environment:
       - FLASK_ENV=production
-      - MONGO_URI=mongodb://admin:password123@mongodb:27017/playfantasy365?authSource=admin
+      # Cập nhật URI để dùng biến từ .env
+      - MONGO_URI=mongodb://admin:${MONGO_ROOT_PASSWORD}@mongodb:27017/playfantasy365?authSource=admin
       - SECRET_KEY=your-super-secret-key-change-in-production
       - PORT=5001
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
@@ -52,7 +58,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
 
 networks:
   playfantasy365_network:
