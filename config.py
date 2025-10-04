@@ -21,11 +21,11 @@ class Config:
     MONGO_ROOT_PASSWORD = os.getenv('MONGO_ROOT_PASSWORD', 'password123')
     
     # Elasticsearch Configuration
-    ELASTICSEARCH_HOST = os.getenv('ELASTICSEARCH_HOST', '37.27.181.54')
+    ELASTICSEARCH_HOST = os.getenv('ELASTICSEARCH_HOST', 'localhost')
     ELASTICSEARCH_PORT = int(os.getenv('ELASTICSEARCH_PORT', 9200))
     ELASTICSEARCH_USER = os.getenv('ELASTICSEARCH_USER', '')
     ELASTICSEARCH_PASSWORD = os.getenv('ELASTICSEARCH_PASSWORD', '')
-    ELASTICSEARCH_INDEX = os.getenv('ELASTICSEARCH_INDEX', 'articles')
+    ELASTICSEARCH_INDEX = os.getenv('ELASTICSEARCH_INDEX', 'video_chunks')
     
     # Sentence Transformer Model Configuration
-    SENTENCE_TRANSFORMER_MODEL = os.getenv('SENTENCE_TRANSFORMER_MODEL', 'all-distilroberta-v1')
+    SENTENCE_TRANSFORMER_MODEL = os.getenv('SENTENCE_TRANSFORMER_MODEL', 'all-MiniLM-L6-v2')

@@ -98,6 +98,11 @@ def home():
 def youtube_channels_page():
     return render_template('index.html')
 
+@main.route('/search', methods=['GET'])
+def search_page():
+    """Render search page"""
+    return render_template('search.html')
+    
 # Channel Detail Page
 @main.route('/channel-detail')
 def channel_detail_page():
@@ -549,11 +554,6 @@ def debug_routes():
     }), 200
 
 # Search Documents API
-@main.route('/search', methods=['GET'])
-def search_page():
-    """Render search page"""
-    return render_template('search.html')
-
 @main.route('/api/search-documents', methods=['POST'])
 def search_documents():
     """Search documents using external search service"""

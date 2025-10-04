@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 class ElasticsearchService:
     def __init__(self):
         """Initialize Elasticsearch service with vector embedding capabilities"""
-        self.es_host = os.getenv('ELASTICSEARCH_HOST', '37.27.181.54')
+        self.es_host = os.getenv('ELASTICSEARCH_HOST', 'localhost')
         self.es_port = int(os.getenv('ELASTICSEARCH_PORT', 9200))
         self.es_user = os.getenv('ELASTICSEARCH_USER', '')
         self.es_password = os.getenv('ELASTICSEARCH_PASSWORD', '')
-        self.index_name = os.getenv('ELASTICSEARCH_INDEX', 'articles')
+        self.index_name = os.getenv('ELASTICSEARCH_INDEX', 'video_chunks')
         
         # Initialize Elasticsearch client
         self.es = self._init_elasticsearch()
@@ -27,19 +27,13 @@ class ElasticsearchService:
         # Initialize sentence transformer model
         self.model = self._init_sentence_transformer()
         
-        # Create index if not exists (only if both services are available)
-        if self.es and self.model:
-            self._create_index()
-        else:
-            logger.warning("⚠️ Skipping index creation - Elasticsearch or model not available")
+        # Create index if not exists
+        self._create_index()
     
     def _init_elasticsearch(self) -> Elasticsearch:
         """Initialize Elasticsearch client"""
         try:
-            logger.info(f"🔄 Initializing Elasticsearch connection to {self.es_host}:{self.es_port}")
-            
             if self.es_user and self.es_password:
-                logger.info("🔐 Using authentication")
                 es = Elasticsearch(
                     [{'host': self.es_host, 'port': self.es_port}],
                     http_auth=(self.es_user, self.es_password),
@@ -47,7 +41,6 @@ class ElasticsearchService:
                     ssl_show_warn=False
                 )
             else:
-                logger.info("🔓 No authentication")
                 es = Elasticsearch([{'host': self.es_host, 'port': self.es_port}])
             
             # Test connection
@@ -64,27 +57,23 @@ class ElasticsearchService:
     def _init_sentence_transformer(self) -> Optional[SentenceTransformer]:
         """Initialize sentence transformer model for vectorization"""
         try:
-            # Use all-distilroberta-v1 model as requested
-            model_name = "all-distilroberta-v1"  # High quality embeddings
+            # Use a lightweight, fast model for production
+            model_name = "all-MiniLM-L6-v2"  # Fast and efficient
             logger.info(f"🔄 Loading sentence transformer model: {model_name}")
-            logger.info("⏳ This may take a few minutes on first run (downloading model)...")
             
             model = SentenceTransformer(model_name)
             logger.info("✅ Sentence transformer model loaded successfully")
             return model
         except Exception as e:
             logger.error(f"❌ Failed to load sentence transformer model: {str(e)}")
-            logger.error("💡 Make sure you have internet connection and sufficient disk space")
             return None
     
     def _create_index(self):
         """Create Elasticsearch index with vector mapping"""
         if not self.es:
-            logger.warning("⚠️ Cannot create index - Elasticsearch not available")
             return
         
         try:
-            logger.info(f"🔄 Creating/checking index: {self.index_name}")
             # Check if index exists
             if self.es.indices.exists(index=self.index_name):
                 logger.info(f"📁 Index '{self.index_name}' already exists")
@@ -126,7 +115,7 @@ class ElasticsearchService:
                         },
                         "vector": {
                             "type": "dense_vector",
-                            "dims": 768,  # all-distilroberta-v1 produces 768-dimensional vectors
+                            "dims": 384,  # all-MiniLM-L6-v2 produces 384-dimensional vectors
                             "index": True,
                             "similarity": "cosine"
                         },
@@ -183,7 +172,6 @@ class ElasticsearchService:
             
         except Exception as e:
             logger.error(f"❌ Failed to create index: {str(e)}")
-            logger.error("💡 Check Elasticsearch connection and permissions")
     
     def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Generate vector embeddings for a list of texts"""
@@ -192,7 +180,6 @@ class ElasticsearchService:
             return []
         
         try:
-            logger.info(f"🔄 Generating embeddings for {len(texts)} texts...")
             embeddings = self.model.encode(texts, convert_to_tensor=False)
             
             # Convert numpy arrays to lists
@@ -214,7 +201,6 @@ class ElasticsearchService:
             }
         
         try:
-            logger.info(f"🔄 Indexing {len(chunks_data)} chunks to Elasticsearch...")
             
             # Prepare documents for indexing
             documents = []
@@ -280,7 +266,6 @@ class ElasticsearchService:
             
         except Exception as e:
             logger.error(f"❌ Failed to index chunks: {str(e)}")
-            logger.error("💡 Check Elasticsearch connection and index mapping")
             return {
                 'success': False,
                 'message': f'Indexing failed: {str(e)}',
@@ -469,8 +454,6 @@ class ElasticsearchService:
         es_healthy = self.es and self.es.ping()
         model_healthy = self.model is not None
         
-        logger.info(f"🔍 Health check - ES: {es_healthy}, Model: {model_healthy}")
-        
         return {
             'elasticsearch': es_healthy,
             'sentence_transformer': model_healthy,
@@ -478,6 +461,4 @@ class ElasticsearchService:
         }
 
 # Global instance
-logger.info("🚀 Initializing Elasticsearch service...")
 elasticsearch_service = ElasticsearchService()
-logger.info("✅ Elasticsearch service initialized")

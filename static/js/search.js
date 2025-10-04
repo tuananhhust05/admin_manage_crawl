@@ -202,7 +202,7 @@ class SearchManager {
         const contentPreview = result.content_preview || 'No preview available';
         const time = result.time || 'Unknown';
         const url = result.url || '#';
-        
+        const origin_content = result.origin_content || 'No content available';
         return `
             <div class="result-card" style="animation-delay: ${index * 0.1}s">
                 <div class="result-header">
@@ -226,7 +226,7 @@ class SearchManager {
                 
                 <div class="result-content">
                     <div class="content-preview">
-                        <p>${this.highlightKeywords(contentPreview, this.currentSearchData.keyword)}</p>
+                        <p>${this.highlightKeywords(origin_content, this.currentSearchData.keyword)}</p>
                     </div>
                 </div>
                 
