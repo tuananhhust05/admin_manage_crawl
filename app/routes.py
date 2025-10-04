@@ -102,7 +102,7 @@ def youtube_channels_page():
 def search_page():
     """Render search page"""
     return render_template('search.html')
-    
+
 # Channel Detail Page
 @main.route('/channel-detail')
 def channel_detail_page():
@@ -1369,6 +1369,7 @@ def crawl_and_chunk_video():
             'subtitleslangs': ['en'],
             'subtitlesformat': 'srt',
             'skip_download': True,
+            'cookies': 'cookies.txt',
             'outtmpl': srt_file_path.replace('.srt', '.%(ext)s'),
         }
         
