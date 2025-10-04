@@ -17,9 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Tạo user không phải root để chạy ứng dụng
-RUN useradd --create-home --shell /bin/bash app \
-    && chown -R app:app /app
-USER app
+# RUN useradd --create-home --shell /bin/bash app \
+#     && chown -R app:app /app
+# USER app
 
 # Expose port
 EXPOSE 5001

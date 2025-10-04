@@ -35,6 +35,13 @@ class YouTubeChannelsManager {
                 this.closeAddChannelModal();
             }
         });
+
+        // Keyboard escape handler
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeAddChannelModal();
+            }
+        });
     }
 
     async loadChannels() {
@@ -143,19 +150,40 @@ class YouTubeChannelsManager {
     }
 
     showAddChannelModal() {
-        document.getElementById('addChannelModal').classList.add('show');
+        const modal = document.getElementById('addChannelModal');
+        modal.classList.add('show');
         document.body.style.overflow = 'hidden';
+        
+        // Focus on first input
+        setTimeout(() => {
+            const firstInput = modal.querySelector('input[required]');
+            if (firstInput) {
+                firstInput.focus();
+            }
+        }, 100);
     }
 
     closeAddChannelModal() {
-        document.getElementById('addChannelModal').classList.remove('show');
+        const modal = document.getElementById('addChannelModal');
+        modal.classList.remove('show');
         document.body.style.overflow = 'auto';
-        document.getElementById('addChannelForm').reset();
+        
+        // Reset form and clear any edit mode
+        const form = document.getElementById('addChannelForm');
+        form.reset();
+        form.dataset.mode = '';
+        form.dataset.channelId = '';
+        
+        // Reset modal title and button
+        document.querySelector('.modal-header h2').textContent = 'Add YouTube Channel';
+        document.querySelector('.modal-footer .btn-primary').innerHTML = '<i class="fas fa-plus"></i> Add Channel';
     }
 
     async addChannel() {
         const form = document.getElementById('addChannelForm');
         const formData = new FormData(form);
+        const isEditMode = form.dataset.mode === 'edit';
+        const channelId = form.dataset.channelId;
         
         const channelData = {
             url: formData.get('url'),
@@ -167,8 +195,14 @@ class YouTubeChannelsManager {
         };
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/youtube-channels`, {
-                method: 'POST',
+            const url = isEditMode 
+                ? `${this.apiBaseUrl}/api/youtube-channels/${channelId}`
+                : `${this.apiBaseUrl}/api/youtube-channels`;
+            
+            const method = isEditMode ? 'PUT' : 'POST';
+            
+            const response = await fetch(url, {
+                method: method,
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -178,14 +212,17 @@ class YouTubeChannelsManager {
             const data = await response.json();
 
             if (data.success) {
-                this.showToast('success', 'Success', 'YouTube channel added successfully');
+                const message = isEditMode 
+                    ? 'YouTube channel updated successfully'
+                    : 'YouTube channel added successfully';
+                this.showToast('success', 'Success', message);
                 this.closeAddChannelModal();
                 this.loadChannels(); // Reload channels
             } else {
-                this.showToast('error', 'Error', data.error || 'Failed to add channel');
+                this.showToast('error', 'Error', data.error || `Failed to ${isEditMode ? 'update' : 'add'} channel`);
             }
         } catch (error) {
-            console.error('Error adding channel:', error);
+            console.error(`Error ${isEditMode ? 'updating' : 'adding'} channel:`, error);
             this.showToast('error', 'Error', 'Unable to connect to server');
         }
     }

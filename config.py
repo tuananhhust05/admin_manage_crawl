@@ -19,3 +19,13 @@ class Config:
     # MongoDB Admin Credentials
     MONGO_ROOT_USERNAME = os.getenv('MONGO_ROOT_USERNAME', 'admin')
     MONGO_ROOT_PASSWORD = os.getenv('MONGO_ROOT_PASSWORD', 'password123')
+    
+    # Elasticsearch Configuration
+    ELASTICSEARCH_HOST = os.getenv('ELASTICSEARCH_HOST', '37.27.181.54')
+    ELASTICSEARCH_PORT = int(os.getenv('ELASTICSEARCH_PORT', 9200))
+    ELASTICSEARCH_USER = os.getenv('ELASTICSEARCH_USER', '')
+    ELASTICSEARCH_PASSWORD = os.getenv('ELASTICSEARCH_PASSWORD', '')
+    ELASTICSEARCH_INDEX = os.getenv('ELASTICSEARCH_INDEX', 'articles')
+    
+    # Sentence Transformer Model Configuration
+    SENTENCE_TRANSFORMER_MODEL = os.getenv('SENTENCE_TRANSFORMER_MODEL', 'all-distilroberta-v1')

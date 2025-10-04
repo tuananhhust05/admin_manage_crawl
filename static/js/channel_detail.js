@@ -5,6 +5,7 @@ class ChannelDetailManager {
         this.channelId = this.getChannelIdFromUrl();
         this.videos = [];
         this.filteredVideos = [];
+        this.srtFiles = [];
         this.channelData = null;
         this.init();
     }
@@ -25,25 +26,57 @@ class ChannelDetailManager {
         return this.channelData ? this.channelData.channel_id : null;
     }
 
+    handleVideoStatusUpdate(detail) {
+        // Cập nhật status của video trong danh sách
+        const videoIndex = this.videos.findIndex(video => video._id === detail.videoId);
+        if (videoIndex !== -1) {
+            this.videos[videoIndex].srt_status = detail.status;
+            this.filteredVideos = [...this.videos];
+            this.renderVideos();
+            
+            // Show notification
+            this.showToast('success', 'Status Updated', 
+                `Video status updated to ${this.getSrtStatusText(detail.status)}`);
+        }
+    }
+
     bindEvents() {
         // Crawl videos button
-        document.getElementById('crawlVideosBtn').addEventListener('click', () => {
+        const crawlVideosBtn = document.getElementById('crawlVideosBtn');
+        if (crawlVideosBtn) {
+            crawlVideosBtn.addEventListener('click', () => {
             this.crawlVideos();
         });
+        }
 
-        document.getElementById('crawlVideosBtnEmpty').addEventListener('click', () => {
+        const crawlVideosBtnEmpty = document.getElementById('crawlVideosBtnEmpty');
+        if (crawlVideosBtnEmpty) {
+            crawlVideosBtnEmpty.addEventListener('click', () => {
             this.crawlVideos();
+        });
+        }
+
+
+        // Listen for video status updates from video detail page
+        window.addEventListener('videoStatusUpdated', (event) => {
+            this.handleVideoStatusUpdate(event.detail);
         });
 
         // Video search
-        document.getElementById('videoSearchInput').addEventListener('input', (e) => {
+        const videoSearchInput = document.getElementById('videoSearchInput');
+        if (videoSearchInput) {
+            videoSearchInput.addEventListener('input', (e) => {
             this.filterVideos(e.target.value);
         });
+        }
 
         // Status filter
-        document.getElementById('statusFilter').addEventListener('change', (e) => {
-            this.filterVideos(document.getElementById('videoSearchInput').value, e.target.value);
-        });
+        const statusFilter = document.getElementById('statusFilter');
+        if (statusFilter) {
+            statusFilter.addEventListener('change', (e) => {
+                this.filterVideos(document.getElementById('videoSearchInput')?.value || '', e.target.value);
+            });
+        }
     }
 
     async loadChannelData() {
@@ -53,14 +86,19 @@ class ChannelDetailManager {
         }
 
         try {
+            console.log('Loading channel data for ID:', this.channelId);
             const response = await fetch(`${this.apiBaseUrl}/api/youtube-channels/${this.channelId}`);
             const data = await response.json();
+            
+            console.log('Channel API response:', data);
 
             if (data.success) {
                 this.channelData = data.data;
+                console.log('Channel data loaded:', this.channelData);
                 this.updateChannelInfo();
             } else {
-                this.showToast('error', 'Error', 'Failed to load channel data');
+                console.error('Failed to load channel data:', data.error);
+                this.showToast('error', 'Error', `Failed to load channel data: ${data.error}`);
             }
         } catch (error) {
             console.error('Error loading channel data:', error);
@@ -161,9 +199,13 @@ class ChannelDetailManager {
                             <i class="fab fa-youtube"></i>
                             Watch
                         </a>
-                        <button class="btn btn-sm btn-secondary" onclick="channelDetailManager.deleteVideo('${video._id}')">
-                            <i class="fas fa-trash"></i>
-                            Delete
+                        <a href="/video-detail?id=${video._id}" class="btn btn-sm btn-info">
+                            <i class="fas fa-info-circle"></i>
+                            Details
+                        </a>
+                        <button class="btn btn-sm btn-success" onclick="channelDetailManager.crawlVideoSrt('${video._id}')">
+                            <i class="fas fa-closed-captioning"></i>
+                            SRT
                         </button>
                     </div>
                 </div>
@@ -244,29 +286,6 @@ class ChannelDetailManager {
         }
     }
 
-    async deleteVideo(videoId) {
-        if (!confirm('Are you sure you want to delete this video?')) {
-            return;
-        }
-
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/api/videos/${videoId}`, {
-                method: 'DELETE'
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                this.showToast('success', 'Success', 'Video deleted successfully');
-                this.loadVideos(); // Reload videos
-            } else {
-                this.showToast('error', 'Error', data.error || 'Failed to delete video');
-            }
-        } catch (error) {
-            console.error('Error deleting video:', error);
-            this.showToast('error', 'Error', 'Unable to connect to server');
-        }
-    }
 
     updateCrawledVideosCount() {
         const crawledCount = this.videos.length;
@@ -333,6 +352,143 @@ class ChannelDetailManager {
             return (num / 1000).toFixed(1) + 'K';
         }
         return num.toString();
+    }
+
+    // ==============================================================================
+    // SRT FUNCTIONS
+    // ==============================================================================
+
+    async loadSrtFiles() {
+        try {
+            this.showSrtLoading(true);
+            const response = await fetch(`${this.apiBaseUrl}/api/srt-files`);
+            const data = await response.json();
+
+            if (data.success) {
+                this.srtFiles = data.data;
+                this.renderSrtFiles();
+            } else {
+                this.showToast('error', 'Error', 'Failed to load SRT files');
+            }
+        } catch (error) {
+            console.error('Error loading SRT files:', error);
+            this.showToast('error', 'Error', 'Unable to connect to server');
+        } finally {
+            this.showSrtLoading(false);
+        }
+    }
+
+    renderSrtFiles() {
+        const srtGrid = document.getElementById('srtGrid');
+        const emptyState = document.getElementById('srtEmptyState');
+
+        if (this.srtFiles.length === 0) {
+            srtGrid.innerHTML = '';
+            emptyState.style.display = 'block';
+            return;
+        }
+
+        emptyState.style.display = 'none';
+        srtGrid.innerHTML = this.srtFiles.map(srtFile => this.createSrtCard(srtFile)).join('');
+    }
+
+    createSrtCard(srtFile) {
+        const createdDate = new Date(srtFile.created_at).toLocaleDateString('en-US');
+        const statusClass = this.getSrtStatusClass(srtFile.status);
+        const statusText = this.getSrtStatusText(srtFile.status);
+        
+        return `
+            <div class="srt-card" data-id="${srtFile._id}">
+                <div class="srt-header">
+                    <div class="srt-icon">
+                        <i class="fas fa-closed-captioning"></i>
+                    </div>
+                    <div class="srt-info">
+                        <h4 class="srt-filename">${srtFile.srt_filename}</h4>
+                        <p class="srt-url">${srtFile.video_url}</p>
+                    </div>
+                </div>
+                
+                <div class="srt-content">
+                    <div class="srt-stats">
+                        <div class="stat-item">
+                            <i class="fas fa-file-alt"></i>
+                            <span>${srtFile.chunks_count || 0} chunks</span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-calendar"></i>
+                            <span>${createdDate}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="srt-meta">
+                        <div class="srt-status ${statusClass}">
+                            <i class="fas fa-circle"></i>
+                            ${statusText}
+                        </div>
+                    </div>
+                    
+                    <div class="srt-actions">
+                        ${srtFile.status === 0 ? 
+                            `<button class="btn btn-sm btn-warning" onclick="channelDetailManager.processSrtFile('${srtFile._id}')">
+                                <i class="fas fa-cogs"></i>
+                                Process
+                            </button>` : 
+                            `<button class="btn btn-sm btn-info" onclick="channelDetailManager.viewSrtChunks('${srtFile._id}')">
+                                <i class="fas fa-eye"></i>
+                                View Chunks
+                            </button>`
+                        }
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    getSrtStatusClass(status) {
+        switch (status) {
+            case 0: return 'status-pending';
+            case 1: return 'status-processed';
+            case 2: return 'status-error';
+            default: return 'status-pending';
+        }
+    }
+
+    getSrtStatusText(status) {
+        switch (status) {
+            case 0: return 'Pending';
+            case 1: return 'Processed';
+            case 2: return 'Completed';
+            default: return 'Pending';
+        }
+    }
+
+
+    async crawlVideoSrt(videoId) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/crawl-and-chunk-video`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    video_id: videoId
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.showToast('success', 'Success', 
+                    `Successfully crawled and chunked video with ${data.chunks_count} chunks`);
+                this.loadVideos(); // Reload videos to update status
+            } else {
+                this.showToast('error', 'Error', data.error || 'Failed to crawl and chunk video');
+            }
+        } catch (error) {
+            console.error('Error crawling video SRT:', error);
+            this.showToast('error', 'Error', 'Unable to connect to server');
+        }
     }
 }
 

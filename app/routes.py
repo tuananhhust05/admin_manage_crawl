@@ -4,27 +4,66 @@ from bson import ObjectId
 from datetime import datetime
 import json
 import os
+import yt_dlp
+import pysrt
+import uuid
+import logging
+from typing import List, Dict, Any
+import traceback
+# Import Elasticsearch service
+from elasticsearch_service import elasticsearch_service
 
 main = Blueprint('main', __name__)
 
 def get_mongo():
     return PyMongo(current_app)
 
+def log_exception(function_name: str, error: Exception):
+    """
+    Helper function để log exception ra terminal với format đẹp
+    """
+    print("=" * 60)
+    print(f"ERROR in {function_name}:")
+    print(f"Error: {str(error)}")
+    print("Traceback:")
+    traceback.print_exc()
+    print("=" * 60)
+
 def serialize_document(doc):
     """Convert MongoDB document to JSON serializable format"""
     if doc is None:
         return None
     
-    # Convert ObjectId to string
-    if '_id' in doc:
-        doc['_id'] = str(doc['_id'])
+    # Create a copy to avoid modifying original document
+    serialized_doc = {}
     
-    # Convert datetime to ISO format
     for key, value in doc.items():
-        if isinstance(value, datetime):
-            doc[key] = value.isoformat()
+        if isinstance(value, ObjectId):
+            # Convert ObjectId to string
+            serialized_doc[key] = str(value)
+        elif isinstance(value, datetime):
+            # Convert datetime to ISO format
+            serialized_doc[key] = value.isoformat()
+        elif isinstance(value, dict):
+            # Recursively serialize nested documents
+            serialized_doc[key] = serialize_document(value)
+        elif isinstance(value, list):
+            # Handle lists that might contain ObjectIds or datetimes
+            serialized_doc[key] = []
+            for item in value:
+                if isinstance(item, ObjectId):
+                    serialized_doc[key].append(str(item))
+                elif isinstance(item, datetime):
+                    serialized_doc[key].append(item.isoformat())
+                elif isinstance(item, dict):
+                    serialized_doc[key].append(serialize_document(item))
+                else:
+                    serialized_doc[key].append(item)
+        else:
+            # Keep other values as is
+            serialized_doc[key] = value
     
-    return doc
+    return serialized_doc
 
 def serialize_documents(docs):
     """Convert list of MongoDB documents to JSON serializable format"""
@@ -63,6 +102,11 @@ def youtube_channels_page():
 @main.route('/channel-detail')
 def channel_detail_page():
     return render_template('channel_detail.html')
+
+# Video Detail Page
+@main.route('/video-detail')
+def video_detail_page():
+    return render_template('video_detail.html')
 
 # API Users
 @main.route('/api/users', methods=['GET'])
@@ -277,6 +321,11 @@ def get_youtube_channels():
         mongo = get_mongo()
         channels = list(mongo.db.youtube_channels.find().sort('created_at', -1))
         
+        # Thêm đếm số video cho mỗi channel
+        for channel in channels:
+            video_count = mongo.db.videos.count_documents({'channel_id': channel['channel_id']})
+            channel['video_count'] = video_count
+        
         # Convert to JSON serializable format
         channels = serialize_documents(channels)
         
@@ -347,6 +396,10 @@ def get_youtube_channel(channel_id):
                 'success': False,
                 'error': 'YouTube channel not found'
             }), 404
+        
+        # Thêm đếm số video cho channel
+        video_count = mongo.db.videos.count_documents({'channel_id': channel['channel_id']})
+        channel['video_count'] = video_count
         
         # Convert to JSON serializable format
         channel = serialize_document(channel)
@@ -709,6 +762,7 @@ def crawl_videos():
         }), 200
         
     except Exception as e:
+        log_exception("crawl_videos", e)
         return jsonify({
             'success': False,
             'error': str(e)
@@ -732,4 +786,1122 @@ def health_check():
             'database': 'disconnected',
             'error': str(e),
             'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+# ==============================================================================
+# SRT PROCESSING FUNCTIONS
+# ==============================================================================
+
+def process_srt_file(srt_file_path: str, max_words: int = 350) -> List[Dict[str, Any]]:
+    """
+    Đọc file SRT và chia thành các chunk với giới hạn số từ
+    """
+    try:
+        subs = pysrt.open(srt_file_path, encoding='utf-8')
+    except Exception as e:
+        logging.error(f"Lỗi khi đọc file {srt_file_path}: {e}")
+        return []
+
+    chunks_data: List[Dict[str, Any]] = []
+    current_chunk_captions: List[pysrt.SubRipItem] = []
+    current_word_count = 0
+
+    # Logic chunking thông minh
+    for caption in subs:
+        caption_text = caption.text.replace('\n', ' ')
+        caption_word_count = len(caption_text.split())
+
+        # Trường hợp đặc biệt: một caption dài hơn giới hạn
+        if caption_word_count > max_words:
+            if current_chunk_captions:
+                # Hoàn thành chunk hiện tại trước
+                full_chunk_text = " ".join([c.text.replace('\n', ' ') for c in current_chunk_captions])
+                start_time = str(current_chunk_captions[0].start)
+                chunks_data.append({'text': full_chunk_text, 'time': start_time})
+                current_chunk_captions = []
+                current_word_count = 0
+
+            # Chia nhỏ caption quá dài
+            words = caption_text.split()
+            for i in range(0, len(words), max_words):
+                sub_chunk_words = words[i : i + max_words]
+                chunks_data.append({'text': " ".join(sub_chunk_words), 'time': str(caption.start)})
+            continue
+
+        # Nếu thêm caption này sẽ vượt quá giới hạn -> hoàn thành chunk hiện tại
+        if current_word_count + caption_word_count > max_words and current_chunk_captions:
+            full_chunk_text = " ".join([c.text.replace('\n', ' ') for c in current_chunk_captions])
+            start_time = str(current_chunk_captions[0].start)
+            chunks_data.append({'text': full_chunk_text, 'time': start_time})
+            
+            # Bắt đầu chunk mới với caption hiện tại
+            current_chunk_captions = [caption]
+            current_word_count = caption_word_count
+        else:
+            # Tiếp tục thêm vào chunk hiện tại
+            current_chunk_captions.append(caption)
+            current_word_count += caption_word_count
+
+    # Đừng quên chunk cuối cùng
+    if current_chunk_captions:
+        full_chunk_text = " ".join([c.text.replace('\n', ' ') for c in current_chunk_captions])
+        start_time = str(current_chunk_captions[0].start)
+        chunks_data.append({'text': full_chunk_text, 'time': start_time})
+
+    return chunks_data
+
+def generate_unique_filename(video_url: str, extension: str = 'srt') -> str:
+    """
+    Tạo tên file unique dựa trên video URL
+    """
+    # Extract video ID from URL
+    video_id = video_url.split('v=')[-1].split('&')[0] if 'v=' in video_url else str(uuid.uuid4())
+    unique_id = str(uuid.uuid4())[:8]
+    return f"{video_id}_{unique_id}.{extension}"
+
+# ==============================================================================
+# CRAWL SRT API ENDPOINTS
+# ==============================================================================
+
+@main.route('/api/crawl-srt', methods=['POST'])
+def crawl_srt():
+    """
+    API để crawl SRT từ video YouTube
+    """
+    try:
+        data = request.get_json()
+        video_url = data.get('video_url')
+        
+        if not video_url:
+            return jsonify({
+                'success': False,
+                'error': 'Video URL is required'
+            }), 400
+        
+        # Tạo thư mục lưu trữ SRT nếu chưa tồn tại
+        srt_folder = 'srt_files'
+        if not os.path.exists(srt_folder):
+            os.makedirs(srt_folder)
+        
+        # Tạo tên file unique
+        srt_filename = generate_unique_filename(video_url)
+        srt_file_path = os.path.join(srt_folder, srt_filename)
+        
+        # Cấu hình yt-dlp để download subtitle
+        ydl_opts = {
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitleslangs': ['en'],  # Thử cả tiếng Anh và tiếng Việt
+            'subtitlesformat': 'srt',
+            'skip_download': True,
+            'outtmpl': srt_file_path.replace('.srt', '.%(ext)s'),
+        }
+        
+        success = False
+        error_message = ""
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_url])
+                
+                # Kiểm tra file đã được tạo
+                if os.path.exists(srt_file_path):
+                    success = True
+                else:
+                    # Thử tìm file với extension khác
+                    for ext in ['srt', 'vtt']:
+                        test_path = srt_file_path.replace('.srt', f'.{ext}')
+                        if os.path.exists(test_path):
+                            os.rename(test_path, srt_file_path)
+                            success = True
+                            break
+                            
+        except Exception as e:
+            error_message = str(e)
+            logging.error(f"Lỗi khi download subtitle: {e}")
+        
+        if success:
+            # Lưu thông tin vào database
+            mongo = get_mongo()
+            srt_doc = {
+                'video_url': video_url,
+                'srt_file_path': srt_file_path,
+                'srt_filename': srt_filename,
+                'status': 0,  # 0: pending processing
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }
+            
+            result = mongo.db.srt_files.insert_one(srt_doc)
+            
+            return jsonify({
+                'success': True,
+                'message': 'SRT file downloaded successfully',
+                'srt_id': str(result.inserted_id),
+                'srt_filename': srt_filename,
+                'srt_file_path': srt_file_path
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Failed to download subtitle: {error_message}'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/process-srt', methods=['POST'])
+def process_srt():
+    """
+    API để xử lý file SRT đã crawl và lưu chunks vào MongoDB
+    """
+    try:
+        data = request.get_json()
+        srt_id = data.get('srt_id')
+        
+        if not srt_id:
+            return jsonify({
+                'success': False,
+                'error': 'SRT ID is required'
+            }), 400
+        
+        mongo = get_mongo()
+        
+        # Lấy thông tin SRT file từ database
+        srt_doc = mongo.db.srt_files.find_one({'_id': ObjectId(srt_id)})
+        if not srt_doc:
+            return jsonify({
+                'success': False,
+                'error': 'SRT file not found'
+            }), 404
+        
+        srt_file_path = srt_doc['srt_file_path']
+        
+        # Kiểm tra file tồn tại
+        if not os.path.exists(srt_file_path):
+            return jsonify({
+                'success': False,
+                'error': 'SRT file not found on disk'
+            }), 404
+        
+        # Xử lý file SRT
+        chunks_data = process_srt_file(srt_file_path)
+        
+        if not chunks_data:
+            return jsonify({
+                'success': False,
+                'error': 'No chunks extracted from SRT file'
+            }), 500
+        
+        # Lưu chunks vào MongoDB
+        chunks_docs = []
+        for i, chunk_info in enumerate(chunks_data):
+            chunk_doc = {
+                'srt_id': ObjectId(srt_id),
+                'video_url': srt_doc['video_url'],
+                'chunk_index': i,
+                'text': chunk_info['text'],
+                'time': chunk_info['time'],
+                'created_at': datetime.utcnow()
+            }
+            chunks_docs.append(chunk_doc)
+        
+        # Insert tất cả chunks
+        if chunks_docs:
+            mongo.db.srt_chunks.insert_many(chunks_docs)
+        
+        # Cập nhật status của SRT file
+        mongo.db.srt_files.update_one(
+            {'_id': ObjectId(srt_id)},
+            {
+                '$set': {
+                    'status': 1,  # 1: processed
+                    'chunks_count': len(chunks_data),
+                    'updated_at': datetime.utcnow()
+                }
+            }
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully processed SRT file with {len(chunks_data)} chunks',
+            'chunks_count': len(chunks_data),
+            'chunks': chunks_data[:5]  # Trả về 5 chunks đầu để preview
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/srt-files', methods=['GET'])
+def get_srt_files():
+    """
+    API để lấy danh sách SRT files
+    """
+    try:
+        mongo = get_mongo()
+        srt_files = list(mongo.db.srt_files.find().sort('created_at', -1))
+        srt_files = serialize_documents(srt_files)
+        
+        return jsonify({
+            'success': True,
+            'data': srt_files,
+            'count': len(srt_files)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/srt-chunks/<srt_id>', methods=['GET'])
+def get_srt_chunks(srt_id):
+    """
+    API để lấy chunks của một SRT file
+    """
+    try:
+        mongo = get_mongo()
+        chunks = list(mongo.db.srt_chunks.find({'srt_id': ObjectId(srt_id)}).sort('chunk_index', 1))
+        chunks = serialize_documents(chunks)
+        
+        return jsonify({
+            'success': True,
+            'data': chunks,
+            'count': len(chunks)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ==============================================================================
+# VIDEO DETAILS AND TRANSCRIPTION API
+# ==============================================================================
+
+@main.route('/api/videos/<video_id>', methods=['GET'])
+def get_video_details(video_id):
+    """
+    API để lấy chi tiết video và transcription
+    """
+    try:
+        mongo = get_mongo()
+        
+        # Lấy thông tin video
+        video = mongo.db.videos.find_one({'_id': ObjectId(video_id)})
+        if not video:
+            return jsonify({
+                'success': False,
+                'error': 'Video not found'
+            }), 404
+        
+        # Lấy SRT files liên quan đến video này
+        srt_files = list(mongo.db.srt_files.find({'video_url': video['url']}).sort('created_at', -1))
+        
+        # Lấy chunks của SRT files đã được xử lý
+        chunks_data = []
+        for srt_file in srt_files:
+            if srt_file.get('status') == 1:  # Chỉ lấy SRT đã được xử lý
+                # Sử dụng ObjectId từ srt_file (chưa được serialize)
+                srt_object_id = srt_file['_id'] if isinstance(srt_file['_id'], ObjectId) else ObjectId(srt_file['_id'])
+                chunks = list(mongo.db.srt_chunks.find({'srt_id': srt_object_id}).sort('chunk_index', 1))
+                chunks_data.extend(chunks)
+        
+        # Serialize data
+        video = serialize_document(video)
+        srt_files = serialize_documents(srt_files)
+        chunks_data = serialize_documents(chunks_data)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'video': video,
+                'srt_files': srt_files,
+                'chunks': chunks_data,
+                'chunks_count': len(chunks_data)
+            }
+        }), 200
+        
+    except Exception as e:
+        log_exception("get_video_details", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/crawl-video-srt', methods=['POST'])
+def crawl_video_srt():
+    """
+    API để crawl SRT cho một video cụ thể
+    """
+    try:
+        data = request.get_json()
+        video_id = data.get('video_id')
+        
+        if not video_id:
+            return jsonify({
+                'success': False,
+                'error': 'Video ID is required'
+            }), 400
+        
+        mongo = get_mongo()
+        
+        # Lấy thông tin video
+        video = mongo.db.videos.find_one({'_id': ObjectId(video_id)})
+        if not video:
+            return jsonify({
+                'success': False,
+                'error': 'Video not found'
+            }), 404
+        
+        video_url = video['url']
+        print("url video: ", video_url)
+        # Kiểm tra xem đã có SRT file chưa
+        existing_srt = mongo.db.srt_files.find_one({'video_url': video_url})
+        if existing_srt:
+            return jsonify({
+                'success': False,
+                'error': 'SRT file already exists for this video',
+                'srt_id': str(existing_srt['_id'])
+            }), 400
+        
+        # Tạo thư mục lưu trữ SRT nếu chưa tồn tại
+        srt_folder = 'srt_files'
+        if not os.path.exists(srt_folder):
+            os.makedirs(srt_folder)
+        
+        # Tạo tên file unique
+        srt_filename = generate_unique_filename(video_url)
+        srt_file_path = os.path.join(srt_folder, srt_filename)
+        
+        # Cấu hình yt-dlp để download subtitle
+        ydl_opts = {
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitleslangs': ['en'],  # Thử cả tiếng Anh và tiếng Việt
+            'subtitlesformat': 'srt',
+            'skip_download': True,
+            'outtmpl': srt_file_path.replace('.srt', '.%(ext)s'),
+        }
+        
+        success = False
+        error_message = ""
+        actual_srt_file = None
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_url])
+                
+                # Tìm file SRT thực tế được tạo (yt-dlp có thể tạo tên khác)
+                actual_srt_file = None
+                
+                # Kiểm tra file với tên mong đợi trước
+                if os.path.exists(srt_file_path):
+                    actual_srt_file = srt_file_path
+                    success = True
+                else:
+                    # Extract video ID từ URL để tìm file
+                    video_id_from_url = video_url.split('v=')[-1].split('&')[0] if 'v=' in video_url else ''
+                    
+                    # Tìm tất cả file .srt trong thư mục
+                    for file in os.listdir(srt_folder):
+                        if file.endswith('.srt') and video_id_from_url in file:  # Video ID trong tên file
+                            actual_srt_file = os.path.join(srt_folder, file)
+                            success = True
+                            break
+                    
+                    # Nếu vẫn không tìm thấy, tìm file .srt mới nhất
+                    if not actual_srt_file:
+                        srt_files = [f for f in os.listdir(srt_folder) if f.endswith('.srt')]
+                        if srt_files:
+                            # Lấy file mới nhất
+                            latest_file = max(srt_files, key=lambda x: os.path.getctime(os.path.join(srt_folder, x)))
+                            actual_srt_file = os.path.join(srt_folder, latest_file)
+                            success = True
+                            
+        except Exception as e:
+            error_message = str(e)
+            logging.error(f"Lỗi khi download subtitle: {e}")
+        
+        if success and actual_srt_file:
+            # Lưu thông tin vào database với file thực tế
+            actual_filename = os.path.basename(actual_srt_file)
+            srt_doc = {
+                'video_url': video_url,
+                'video_id': ObjectId(video_id),
+                'srt_file_path': actual_srt_file,
+                'srt_filename': actual_filename,
+                'status': 0,  # 0: pending processing
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }
+            
+            result = mongo.db.srt_files.insert_one(srt_doc)
+            
+            # Cập nhật status của video
+            mongo.db.videos.update_one(
+                {'_id': ObjectId(video_id)},
+                {'$set': {'status':1,'srt_status': 1, 'updated_at': datetime.utcnow()}}  # 1: SRT downloaded
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': 'SRT file downloaded successfully',
+                'srt_id': str(result.inserted_id),
+                'srt_filename': actual_filename,
+                'srt_file_path': actual_srt_file
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Failed to download subtitle: {error_message}'
+            }), 500
+            
+    except Exception as e:
+        log_exception("crawl_video_srt", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+from elasticsearch import Elasticsearch, exceptions
+import time
+ES_HOST = "http://37.27.181.54:9200" # Địa chỉ Elasticsearch
+ES_INDEX_NAME = "articles"          # Tên index bạn muốn lưu dữ liệu
+MODEL_NAME = 'all-distilroberta-v1' # Model dùng để mã hóa
+from sentence_transformers import SentenceTransformer
+try:
+    # --- Khởi tạo kết nối và model (chỉ một lần) ---
+    logging.info("🔌 Đang kết nối đến Elasticsearch...")
+    es_connection = Elasticsearch([ES_HOST])
+    if not es_connection.ping():
+        raise ConnectionError(f"Không thể kết nối đến Elasticsearch tại {ES_HOST}")
+    logging.info("   ✔ Kết nối Elasticsearch thành công!")
+
+    logging.info(f"🧠 Đang tải model '{MODEL_NAME}'... (có thể mất một lúc)")
+    transformer_model = SentenceTransformer('all-distilroberta-v1')
+    logging.info("   ✔ Tải model thành công!")
+    
+except exceptions.ConnectionError as e:
+    logging.error(f"🔥 LỖI KẾT NỐI ELASTICSEARCH: {e}")
+except Exception as e:
+    logging.error(f"🔥 Đã xảy ra lỗi không mong muốn trong quá trình thực thi: {e}")
+    
+@main.route('/api/crawl-and-chunk-video', methods=['POST'])
+def crawl_and_chunk_video():
+    """
+    API gộp crawl SRT và chunk cho một video cụ thể
+    """
+    try:
+        data = request.get_json()
+        video_id = data.get('video_id')
+        
+        if not video_id:
+            return jsonify({
+                'success': False,
+                'error': 'Video ID is required'
+            }), 400
+        
+        mongo = get_mongo()
+        
+        # Lấy thông tin video
+        video = mongo.db.videos.find_one({'_id': ObjectId(video_id)})
+        if not video:
+            return jsonify({
+                'success': False,
+                'error': 'Video not found'
+            }), 404
+        channel = mongo.db.youtube_channels.find_one({'channel_id': video['channel_id']})
+        channel_url = channel['url']
+        video_url = video['url']
+        print(f"Processing video: {video_url}")
+        
+        # Kiểm tra xem đã có SRT file chưa - nếu có thì xóa để crawl lại
+        existing_srt = mongo.db.srt_files.find_one({'video_url': video_url})
+        if existing_srt:
+            print(f"Found existing SRT file, deleting to re-crawl: {existing_srt['_id']}")
+            # Xóa SRT file cũ và chunks liên quan
+            mongo.db.srt_chunks.delete_many({'srt_id': existing_srt['_id']})
+            mongo.db.srt_files.delete_one({'_id': existing_srt['_id']})
+            
+            # Xóa file vật lý nếu tồn tại
+            if os.path.exists(existing_srt.get('srt_file_path', '')):
+                try:
+                    os.remove(existing_srt['srt_file_path'])
+                except Exception as e:
+                    print(f"Warning: Could not delete old SRT file: {e}")
+            
+                # Xóa chunks khỏi Elasticsearch
+                try:
+                    es_delete_result = elasticsearch_service.delete_video_chunks(video_id)
+                    if es_delete_result['success']:
+                        print(f"✅ Deleted {es_delete_result.get('deleted_count', 0)} Elasticsearch records")
+                    else:
+                        print(f"⚠️ Elasticsearch deletion warning: {es_delete_result['message']}")
+                except Exception as e:
+                    print(f"⚠️ Elasticsearch deletion error: {str(e)}")
+            
+            # Reset video status về pending
+            mongo.db.videos.update_one(
+                {'_id': ObjectId(video_id)},
+                {'$set': {'srt_status': 0, 'updated_at': datetime.utcnow()}}
+            )
+        
+        # BƯỚC 1: CRAWL SRT FILE
+        print("Step 1: Crawling SRT file...")
+        srt_folder = 'srt_files'
+        if not os.path.exists(srt_folder):
+            os.makedirs(srt_folder)
+        
+        # Tạo tên file unique
+        srt_filename = generate_unique_filename(video_url)
+        srt_file_path = os.path.join(srt_folder, srt_filename)
+        
+        # Cấu hình yt-dlp để download subtitle
+        ydl_opts = {
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitleslangs': ['en'],
+            'subtitlesformat': 'srt',
+            'skip_download': True,
+            'outtmpl': srt_file_path.replace('.srt', '.%(ext)s'),
+        }
+        
+        srt_success = False
+        srt_error_message = ""
+        actual_srt_file = None
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_url])
+                
+                # Tìm file SRT thực tế được tạo
+                if os.path.exists(srt_file_path):
+                    actual_srt_file = srt_file_path
+                    srt_success = True
+                else:
+                    # Tìm file có chứa video ID
+                    video_id_from_url = video_url.split('v=')[-1].split('&')[0] if 'v=' in video_url else ''
+                    for file in os.listdir(srt_folder):
+                        if file.endswith('.srt') and video_id_from_url in file:
+                            actual_srt_file = os.path.join(srt_folder, file)
+                            srt_success = True
+                            break
+                    
+                    # Nếu vẫn không tìm thấy, lấy file mới nhất
+                    if not actual_srt_file:
+                        srt_files = [f for f in os.listdir(srt_folder) if f.endswith('.srt')]
+                        if srt_files:
+                            latest_file = max(srt_files, key=lambda x: os.path.getctime(os.path.join(srt_folder, x)))
+                            actual_srt_file = os.path.join(srt_folder, latest_file)
+                            srt_success = True
+                            
+        except Exception as e:
+            srt_error_message = str(e)
+            logging.error(f"Lỗi khi download subtitle: {e}")
+        
+        if not srt_success or not actual_srt_file:
+            return jsonify({
+                'success': False,
+                'error': f'Failed to download subtitle: {srt_error_message}',
+                'step': 'crawl_srt'
+            }), 500
+        
+        # Lưu thông tin SRT file vào database
+        actual_filename = os.path.basename(actual_srt_file)
+        srt_doc = {
+            'video_url': video_url,
+            'video_id': ObjectId(video_id),
+            'srt_file_path': actual_srt_file,
+            'srt_filename': actual_filename,
+            'status': 0,  # 0: pending processing
+            'created_at': datetime.utcnow(),
+            'updated_at': datetime.utcnow()
+        }
+        
+        srt_result = mongo.db.srt_files.insert_one(srt_doc)
+        srt_id = srt_result.inserted_id
+        
+        # BƯỚC 2: CHUNK SRT FILE
+        print("Step 2: Chunking SRT file...")
+        chunks_data = process_srt_file(actual_srt_file)
+        
+        if not chunks_data:
+            return jsonify({
+                'success': False,
+                'error': 'No chunks extracted from SRT file',
+                'step': 'chunk_srt'
+            }), 500
+        
+        # Lưu chunks vào MongoDB
+        chunks_docs = []
+        for i, chunk_info in enumerate(chunks_data):
+            chunk_doc = {
+                'srt_id': srt_id,
+                'video_id': ObjectId(video_id),
+                'video_url': video_url,
+                'chunk_index': i,
+                'text': chunk_info['text'],
+                'time': chunk_info['time'],
+                'created_at': datetime.utcnow()
+            }
+            chunks_docs.append(chunk_doc)
+        
+        # Insert tất cả chunks
+        if chunks_docs:
+            mongo.db.srt_chunks.insert_many(chunks_docs)
+        
+        # Cập nhật status của SRT file
+        mongo.db.srt_files.update_one(
+            {'_id': srt_id},
+            {
+                '$set': {
+                    'status': 1,  # 1: processed
+                    'chunks_count': len(chunks_data),
+                    'updated_at': datetime.utcnow()
+                }
+            }
+        )
+        
+        # BƯỚC 3: ELASTICSEARCH VECTOR INDEXING
+        es_result = []
+        print("Step 3: Elasticsearch vector indexing...")
+        try:
+            video_info = {
+                'video_id': video_id,
+                'title': video.get('title', ''),
+                'channel_name': video.get('channel_name', ''),
+                'url': video.get('url', ''),
+                'channel_url': video.get('channel_url', '')  # Thêm channel URL
+            }
+            for data in chunks_data:
+                vector = transformer_model.encode(data['text']).tolist()
+                delete_query = {
+                    "query": {
+                        "term": {
+                            "url": video.get('url', ''),
+                        }
+                    }
+                }
+                response = es_connection.delete_by_query(
+                    index=ES_INDEX_NAME,
+                    body=delete_query
+                )
+                deleted_count = response.get('deleted', 0)
+                if deleted_count > 0:
+                    print(f"✅ Đã xóa thành công {deleted_count} document.")
+                else:
+                    print("ℹ️ Không tìm thấy document nào khớp để xóa. Hãy kiểm tra lại giá trị URL và câu query.")
+                # 2. Chuẩn bị document để index
+                document = {
+                    'url': video.get('url', ''),
+                    'origin_content': data['text'],
+                    'vector': vector,
+                    'time': int(time.time()),
+                    'url_channel': channel_url,
+                }
+                # 3. Index document vào Elasticsearch
+                logging.info(f"   - Chunk {i+1}/{len(chunks_data)}: Đang index vào '{ES_INDEX_NAME}'...")
+                response = es_connection.index(index=ES_INDEX_NAME, body=document)
+                response_dict = dict(response)
+                pretty_response_str = json.dumps(response_dict, indent=2, ensure_ascii=False)
+                print("pretty_response_str",pretty_response_str)
+                logging.info(f"   ✔ Chunk {i+1} đã được index thành công với ID:")
+                es_result.append(pretty_response_str)
+            print("data",chunks_data, video_info)
+        except Exception as e:
+            print(f"❌ Elasticsearch indexing error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # es_result = {
+            #     'success': False,
+            #     'message': f'Elasticsearch indexing error: {str(e)}',
+            #     'indexed_count': 0
+            # }
+        
+        # BƯỚC 4: CẬP NHẬT STATUS VIDEO
+        print("Step 4: Updating video status...")
+        mongo.db.videos.update_one(
+            {'_id': ObjectId(video_id)},
+            {'$set': {'status':1,'srt_status': 1, 'updated_at': datetime.utcnow()}}  # 1: SRT processed
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully crawled and chunked video with {len(chunks_data)} chunks',
+            'srt_id': str(srt_id),
+            'srt_filename': actual_filename,
+            'srt_file_path': actual_srt_file,
+            'chunks_count': len(chunks_data),
+            'video_status': 1,
+            'elasticsearch': es_result
+        }), 200
+        
+    except Exception as e:
+        log_exception("crawl_and_chunk_video", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/process-video-srt', methods=['POST'])
+def process_video_srt():
+    """
+    API để xử lý SRT cho một video cụ thể
+    """
+    try:
+        data = request.get_json()
+        video_id = data.get('video_id')
+        
+        if not video_id:
+            return jsonify({
+                'success': False,
+                'error': 'Video ID is required'
+            }), 400
+        
+        mongo = get_mongo()
+        
+        # Lấy thông tin video
+        video = mongo.db.videos.find_one({'_id': ObjectId(video_id)})
+        if not video:
+            return jsonify({
+                'success': False,
+                'error': 'Video not found'
+            }), 404
+        
+        # Lấy SRT files của video này
+        srt_files = list(mongo.db.srt_files.find({'video_url': video['url'], 'status': 0}))
+        
+        if not srt_files:
+            return jsonify({
+                'success': False,
+                'error': 'No pending SRT files found for this video'
+            }), 404
+        
+        total_chunks = 0
+        processed_files = 0
+        
+        for srt_file in srt_files:
+            srt_file_path = srt_file['srt_file_path']
+            
+            # Kiểm tra file tồn tại
+            if not os.path.exists(srt_file_path):
+                continue
+            
+            # Xử lý file SRT
+            chunks_data = process_srt_file(srt_file_path)
+            
+            if not chunks_data:
+                continue
+            
+            # Lưu chunks vào MongoDB
+            chunks_docs = []
+            for i, chunk_info in enumerate(chunks_data):
+                chunk_doc = {
+                    'srt_id': srt_file['_id'],
+                    'video_id': ObjectId(video_id),
+                    'video_url': video['url'],
+                    'chunk_index': i,
+                    'text': chunk_info['text'],
+                    'time': chunk_info['time'],
+                    'created_at': datetime.utcnow()
+                }
+                chunks_docs.append(chunk_doc)
+            
+            # Insert tất cả chunks
+            if chunks_docs:
+                mongo.db.srt_chunks.insert_many(chunks_docs)
+                total_chunks += len(chunks_data)
+            
+            # Cập nhật status của SRT file
+            mongo.db.srt_files.update_one(
+                {'_id': srt_file['_id']},
+                {
+                    '$set': {
+                        'status': 1,  # 1: processed
+                        'chunks_count': len(chunks_data),
+                        'updated_at': datetime.utcnow()
+                    }
+                }
+            )
+            processed_files += 1
+        
+        # Cập nhật status của video
+        mongo.db.videos.update_one(
+            {'_id': ObjectId(video_id)},
+            {'$set': {'srt_status': 2, 'updated_at': datetime.utcnow()}}  # 2: SRT processed
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully processed {processed_files} SRT files with {total_chunks} chunks',
+            'processed_files': processed_files,
+            'chunks_count': total_chunks
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ==============================================================================
+# ELASTICSEARCH APIs
+# ==============================================================================
+
+@main.route('/api/search', methods=['GET'])
+def search_videos():
+    """
+    API tìm kiếm semantic trong Elasticsearch với vector embeddings
+    """
+    try:
+        # Get search parameters
+        query = request.args.get('q', '').strip()
+        video_id = request.args.get('video_id', None)
+        size = int(request.args.get('size', 10))
+        from_ = int(request.args.get('from', 0))
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query parameter "q" is required'
+            }), 400
+        
+        # Perform semantic search
+        search_result = elasticsearch_service.search_chunks(
+            query=query,
+            video_id=video_id,
+            size=size,
+            from_=from_
+        )
+        
+        if search_result['success']:
+            return jsonify({
+                'success': True,
+                'query': query,
+                'results': search_result['results'],
+                'total': search_result['total'],
+                'took': search_result['took'],
+                'message': f"Found {len(search_result['results'])} results"
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': search_result['message']
+            }), 500
+            
+    except Exception as e:
+        logging.error(f"Search API error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Search failed: {str(e)}'
+        }), 500
+
+@main.route('/api/elasticsearch/stats', methods=['GET'])
+def get_elasticsearch_stats():
+    """
+    API lấy thống kê Elasticsearch index
+    """
+    try:
+        stats = elasticsearch_service.get_index_stats()
+        
+        if stats['success']:
+            return jsonify({
+                'success': True,
+                'stats': stats
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': stats['message']
+            }), 500
+            
+    except Exception as e:
+        logging.error(f"Elasticsearch stats API error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to get stats: {str(e)}'
+        }), 500
+
+@main.route('/api/elasticsearch/health', methods=['GET'])
+def get_elasticsearch_health():
+    """
+    API kiểm tra health của Elasticsearch và model
+    """
+    try:
+        health = elasticsearch_service.health_check()
+        
+        return jsonify({
+            'success': True,
+            'health': health
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Elasticsearch health API error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Health check failed: {str(e)}'
+        }), 500
+
+@main.route('/api/elasticsearch/delete-video', methods=['POST'])
+def delete_video_from_elasticsearch():
+    """
+    API xóa tất cả chunks của một video khỏi Elasticsearch
+    """
+    try:
+        data = request.get_json()
+        video_id = data.get('video_id') if data else None
+        
+        if not video_id:
+            return jsonify({
+                'success': False,
+                'error': 'video_id is required'
+            }), 400
+        
+        # Delete video chunks from Elasticsearch
+        delete_result = elasticsearch_service.delete_video_chunks(video_id)
+        
+        if delete_result['success']:
+            return jsonify({
+                'success': True,
+                'message': delete_result['message'],
+                'deleted_count': delete_result.get('deleted_count', 0)
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': delete_result['message']
+            }), 500
+            
+    except Exception as e:
+        logging.error(f"Elasticsearch delete API error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Delete failed: {str(e)}'
+        }), 500
+
+@main.route('/api/cleanup-video-data', methods=['POST'])
+def cleanup_video_data():
+    """
+    API xóa toàn bộ dữ liệu cũ của video: SRT files, chunks, Elasticsearch records
+    """
+    try:
+        data = request.get_json()
+        video_id = data.get('video_id') if data else None
+        
+        if not video_id:
+            return jsonify({
+                'success': False,
+                'error': 'video_id is required'
+            }), 400
+        
+        mongo = get_mongo()
+        cleanup_results = {
+            'srt_files_deleted': 0,
+            'chunks_deleted': 0,
+            'elasticsearch_deleted': 0,
+            'errors': []
+        }
+        
+        # BƯỚC 1: XÓA SRT FILES
+        try:
+            print(f"🗑️ Deleting SRT files for video: {video_id}")
+            srt_files = mongo.db.srt_files.find({'video_id': ObjectId(video_id)})
+            
+            for srt_file in srt_files:
+                # Xóa file vật lý
+                srt_file_path = srt_file.get('file_path')
+                if srt_file_path and os.path.exists(srt_file_path):
+                    try:
+                        os.remove(srt_file_path)
+                        print(f"✅ Deleted SRT file: {srt_file_path}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to delete SRT file {srt_file_path}: {str(e)}")
+                        cleanup_results['errors'].append(f"SRT file deletion: {str(e)}")
+                
+                # Xóa record trong MongoDB
+                mongo.db.srt_files.delete_one({'_id': srt_file['_id']})
+                cleanup_results['srt_files_deleted'] += 1
+                
+        except Exception as e:
+            print(f"❌ Error deleting SRT files: {str(e)}")
+            cleanup_results['errors'].append(f"SRT files: {str(e)}")
+        
+        # BƯỚC 2: XÓA CHUNKS
+        try:
+            print(f"🗑️ Deleting chunks for video: {video_id}")
+            chunks_result = mongo.db.chunks.delete_many({'video_id': ObjectId(video_id)})
+            cleanup_results['chunks_deleted'] = chunks_result.deleted_count
+            print(f"✅ Deleted {chunks_result.deleted_count} chunks")
+            
+        except Exception as e:
+            print(f"❌ Error deleting chunks: {str(e)}")
+            cleanup_results['errors'].append(f"Chunks: {str(e)}")
+        
+        # BƯỚC 3: XÓA ELASTICSEARCH RECORDS
+        try:
+            print(f"🗑️ Deleting Elasticsearch records for video: {video_id}")
+            es_delete_result = elasticsearch_service.delete_video_chunks(video_id)
+            
+            if es_delete_result['success']:
+                cleanup_results['elasticsearch_deleted'] = es_delete_result.get('deleted_count', 0)
+                print(f"✅ Deleted {cleanup_results['elasticsearch_deleted']} Elasticsearch records")
+            else:
+                print(f"⚠️ Elasticsearch deletion warning: {es_delete_result['message']}")
+                cleanup_results['errors'].append(f"Elasticsearch: {es_delete_result['message']}")
+                
+        except Exception as e:
+            print(f"❌ Error deleting Elasticsearch records: {str(e)}")
+            cleanup_results['errors'].append(f"Elasticsearch: {str(e)}")
+        
+        # BƯỚC 4: RESET VIDEO STATUS
+        try:
+            print(f"🔄 Resetting video status for: {video_id}")
+            mongo.db.videos.update_one(
+                {'_id': ObjectId(video_id)},
+                {
+                    '$set': {
+                        'srt_status': 0,  # 0: not processed
+                        'status': 0,      # 0: not processed
+                        'updated_at': datetime.utcnow()
+                    }
+                }
+            )
+            print(f"✅ Reset video status")
+            
+        except Exception as e:
+            print(f"❌ Error resetting video status: {str(e)}")
+            cleanup_results['errors'].append(f"Video status: {str(e)}")
+        
+        # Tổng kết
+        total_deleted = (cleanup_results['srt_files_deleted'] + 
+                        cleanup_results['chunks_deleted'] + 
+                        cleanup_results['elasticsearch_deleted'])
+        
+        if cleanup_results['errors']:
+            return jsonify({
+                'success': True,
+                'message': f'Cleanup completed with {len(cleanup_results["errors"])} warnings',
+                'results': cleanup_results,
+                'total_deleted': total_deleted,
+                'warnings': cleanup_results['errors']
+            }), 200
+        else:
+            return jsonify({
+                'success': True,
+                'message': f'Successfully cleaned up all data for video',
+                'results': cleanup_results,
+                'total_deleted': total_deleted
+            }), 200
+            
+    except Exception as e:
+        logging.error(f"Cleanup API error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Cleanup failed: {str(e)}'
         }), 500

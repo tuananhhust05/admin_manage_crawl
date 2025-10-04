@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Details - YouTube Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <a href="javascript:history.back()" class="back-btn">
+                        <i class="fas fa-arrow-left"></i>
+                    </a>
+                    <i class="fab fa-youtube"></i>
+                    <h1 id="videoTitle">Video Details</h1>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="fullProcessBtn" title="Delete old data → Crawl SRT → Chunk → Vectorize → Save to Elasticsearch">
+                        <i class="fas fa-sync-alt"></i>
+                        Full Process
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.history.back()">
+                        <i class="fas fa-arrow-left"></i>
+                        Back
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Video Info -->
+        <div class="video-info-section">
+            <div class="video-info-card">
+                <div class="video-header">
+                    <div class="video-thumbnail-large">
+                        <img id="videoThumbnail" src="" alt="Video thumbnail" onerror="this.style.display='none'">
+                        <div class="video-duration-large" id="videoDuration">N/A</div>
+                    </div>
+                    <div class="video-details">
+                        <h2 id="videoName">Loading...</h2>
+                        <p id="videoUrl" class="video-url">Loading...</p>
+                        <p id="videoDescription" class="video-description">Loading...</p>
+                    </div>
+                </div>
+                <div class="video-stats">
+                    <div class="stat-item">
+                        <span class="number" id="viewCount">0</span>
+                        <span class="label">Views</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="number" id="likeCount">0</span>
+                        <span class="label">Likes</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="number" id="chunksCount">0</span>
+                        <span class="label">Transcription Chunks</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="number" id="srtStatus">Pending</span>
+                        <span class="label">Processing Status</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SRT Files Section -->
+        <div class="srt-section">
+            <div class="section-header">
+                <h2>SRT Files</h2>
+                <div class="srt-actions">
+                    <button class="btn btn-info" id="refreshSrtBtn">
+                        <i class="fas fa-sync"></i>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="srt-grid" id="srtGrid">
+                <!-- SRT files will be loaded here -->
+            </div>
+
+            <div class="loading" id="srtLoading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Loading SRT files...</p>
+            </div>
+
+            <div class="empty-state" id="srtEmptyState" style="display: none;">
+                <i class="fas fa-closed-captioning"></i>
+                <h3>No SRT files found</h3>
+                <p>Click "Crawl & Chunk SRT" to automatically download and process subtitles</p>
+            </div>
+        </div>
+
+        <!-- Transcription Section -->
+        <div class="transcription-section">
+            <div class="section-header">
+                <h2>Transcription</h2>
+                <div class="transcription-actions">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="transcriptionSearch" placeholder="Search in transcription...">
+                    </div>
+                    <button class="btn btn-info" id="exportTranscriptionBtn">
+                        <i class="fas fa-download"></i>
+                        Export
+                    </button>
+                </div>
+            </div>
+
+            <div class="transcription-content" id="transcriptionContent">
+                <!-- Transcription chunks will be loaded here -->
+            </div>
+
+            <div class="loading" id="transcriptionLoading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Loading transcription...</p>
+            </div>
+
+            <div class="empty-state" id="transcriptionEmptyState" style="display: none;">
+                <i class="fas fa-file-alt"></i>
+                <h3>No transcription available</h3>
+                <p>Click "Crawl & Chunk SRT" to automatically download and process subtitles</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/video_detail.js') }}"></script>
+</body>
+</html>
+
