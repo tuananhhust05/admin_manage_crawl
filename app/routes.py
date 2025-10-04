@@ -1479,24 +1479,25 @@ def crawl_and_chunk_video():
                 'url': video.get('url', ''),
                 'channel_url': video.get('channel_url', '')  # Thêm channel URL
             }
-            for data in chunks_data:
-                vector = transformer_model.encode(data['text']).tolist()
-                delete_query = {
-                    "query": {
-                        "term": {
-                            "url": video.get('url', ''),
-                        }
+            delete_query = {
+                "query": {
+                    "term": {
+                        "url": video.get('url', ''),
                     }
                 }
-                response = es_connection.delete_by_query(
-                    index=ES_INDEX_NAME,
-                    body=delete_query
-                )
-                deleted_count = response.get('deleted', 0)
-                if deleted_count > 0:
-                    print(f"✅ Đã xóa thành công {deleted_count} document.")
-                else:
-                    print("ℹ️ Không tìm thấy document nào khớp để xóa. Hãy kiểm tra lại giá trị URL và câu query.")
+            }
+            response = es_connection.delete_by_query(
+                index=ES_INDEX_NAME,
+                body=delete_query
+            )
+            deleted_count = response.get('deleted', 0)
+            if deleted_count > 0:
+                print(f"✅ Đã xóa thành công {deleted_count} document.")
+            else:
+                print("ℹ️ Không tìm thấy document nào khớp để xóa. Hãy kiểm tra lại giá trị URL và câu query.")
+            for data in chunks_data:
+                vector = transformer_model.encode(data['text']).tolist()
+               
                 # 2. Chuẩn bị document để index
                 document = {
                     'url': video.get('url', ''),
