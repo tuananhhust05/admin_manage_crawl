@@ -571,8 +571,7 @@ def summarize_articles():
         resp = requests.post(
             'http://46.62.152.241:8000/synthesize',
             json={'articles': articles},
-            headers={'Content-Type': 'application/json'},
-            timeout=60
+            headers={'Content-Type': 'application/json'}
         )
         if resp.status_code == 200:
             payload = resp.json()
