@@ -60,16 +60,12 @@
                 return;
             }
 
-            // Render summary as multi-paragraph article
+            // Render summary as multi-paragraph article (no bold title)
             const article = document.createElement('div');
             article.className = 'as-article';
-
-            const lines = summary.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
+            const lines = summary.split(/\n+/).map(s => s.trim()).filter(Boolean);
             if (lines.length) {
-                const first = document.createElement('h2');
-                first.textContent = lines[0].replace(/^Title:\s*/i, '');
-                article.appendChild(first);
-                lines.slice(1).forEach(p => {
+                lines.forEach(p => {
                     const para = document.createElement('p');
                     para.textContent = p;
                     article.appendChild(para);
