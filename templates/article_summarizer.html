@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Article Synthesizer</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <style>
+        /* Minimal Apple-like clean styling for this page only */
+        .as-container { max-width: 960px; margin: 40px auto; padding: 0 16px; }
+        .as-title { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
+        .as-sub { color: #6e6e73; margin-bottom: 24px; }
+        .as-card { background: #fff; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,0.06); padding: 20px; margin-bottom: 16px; }
+        .as-textarea { width: 100%; min-height: 140px; border: 1px solid #e5e5ea; border-radius: 14px; padding: 12px 14px; font-size: 14px; resize: vertical; outline: none; transition: box-shadow .2s, border-color .2s; }
+        .as-textarea:focus { border-color: #0071e3; box-shadow: 0 0 0 4px rgba(0,113,227,0.12); }
+        .as-actions { display: flex; gap: 12px; margin-top: 12px; }
+        .as-btn { appearance: none; border: none; border-radius: 999px; padding: 10px 16px; font-weight: 600; cursor: pointer; transition: transform .04s ease, box-shadow .2s; }
+        .as-btn:active { transform: translateY(1px); }
+        .as-btn-primary { background: #000; color: #fff; }
+        .as-btn-secondary { background: #f5f5f7; color: #111; }
+        .as-header-actions { display: flex; gap: 10px; margin-bottom: 16px; }
+        .as-add { background: #f5f5f7; }
+        .as-generate { background: linear-gradient(135deg,#0a84ff,#5e5ce6); color: #fff; box-shadow: 0 8px 16px rgba(14,122,254,0.25); }
+        .as-output { margin-top: 28px; }
+        .as-article { background: #fff; border-radius: 18px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); padding: 20px; }
+        .as-article h2 { margin: 0 0 8px; font-size: 22px; }
+        .as-article p { line-height: 1.6; color: #1d1d1f; }
+        .as-loader { display: none; align-items: center; gap: 10px; margin-top: 12px; color: #1d1d1f; }
+        .as-spinner { width: 22px; height: 22px; border: 3px solid #e5e5ea; border-top-color: #0a84ff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="as-container">
+        <div class="as-title">Article Synthesizer</div>
+        <div class="as-sub">Paste multiple articles, then generate a clean multi-paragraph summary.</div>
+
+        <div class="as-header-actions">
+            <button id="add-article" class="as-btn as-add">+ Add Article</button>
+            <button id="generate" class="as-btn as-generate">Generate</button>
+        </div>
+
+        <div id="forms"></div>
+        <div class="as-loader" id="loader"><div class="as-spinner"></div><span>Generating... This may take a few seconds.</span></div>
+
+        <div class="as-output" id="output"></div>
+    </div>
+
+    <script src="/static/js/article_summarizer.js"></script>
+    <script>
+        // Initialize with one form
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.ArticleSummarizer) {
+                window.ArticleSummarizer.init();
+            }
+        });
+    </script>
+</body>
+</html>
+

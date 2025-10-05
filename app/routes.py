@@ -113,6 +113,11 @@ def channel_detail_page():
 def video_detail_page():
     return render_template('video_detail.html')
 
+# Article Summarizer Page
+@main.route('/article-summarizer', methods=['GET'])
+def article_summarizer_page():
+    return render_template('article_summarizer.html')
+
 # API Users
 @main.route('/api/users', methods=['GET'])
 def get_users():
@@ -552,6 +557,30 @@ def debug_routes():
         'success': True,
         'routes': routes
     }), 200
+
+# Proxy API to external summarize service
+@main.route('/api/summarize-articles', methods=['POST'])
+def summarize_articles():
+    try:
+        data = request.get_json() or {}
+        articles = data.get('articles', [])
+        if not isinstance(articles, list) or len(articles) == 0:
+            return jsonify({'success': False, 'error': 'articles must be a non-empty list'}), 400
+
+        import requests
+        resp = requests.post(
+            'http://46.62.152.241:8000/synthesize',
+            json={'articles': articles},
+            headers={'Content-Type': 'application/json'},
+            timeout=60
+        )
+        if resp.status_code == 200:
+            payload = resp.json()
+            return jsonify({'success': True, 'data': payload}), 200
+        return jsonify({'success': False, 'error': f'external service {resp.status_code}'}), 502
+    except Exception as e:
+        logging.exception('summarize_articles failed')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Search Documents API
 @main.route('/api/search-documents', methods=['POST'])
