@@ -128,12 +128,23 @@ def articles_page():
         # Get type filter from query parameter
         selected_type = request.args.get('type', 'fotmob')
         
+        # Debug: Check what collections exist
+        collections = mongo.db.list_collection_names()
+        print(f"Available collections: {collections}")
+        
+        # Check if articles collection exists and has data
+        articles_count = mongo.db.articles.count_documents({})
+        print(f"Total articles in collection: {articles_count}")
+        
         # Query articles with type filter, sorted by newest first
         query = {'type': selected_type} if selected_type != 'all' else {}
         articles = list(mongo.db.articles.find(query).sort('created_at', -1))
         
+        print(f"Found {len(articles)} articles for type: {selected_type}")
+        
         # Get unique types for the dropdown
         unique_types = mongo.db.articles.distinct('type')
+        print(f"Available types: {unique_types}")
         
         # Convert ObjectId to string for JSON serialization
         for article in articles:
@@ -153,6 +164,138 @@ def articles_page():
                              selected_type='fotmob',
                              available_types=['fotmob'],
                              error=str(e))
+
+# Debug API for articles
+@main.route('/api/debug-articles', methods=['GET'])
+def debug_articles():
+    """Debug API to check articles collection"""
+    try:
+        mongo = get_mongo()
+        
+        # Get all collections
+        collections = mongo.db.list_collection_names()
+        
+        # Check articles collection
+        articles_count = mongo.db.articles.count_documents({})
+        
+        # Get sample articles
+        sample_articles = list(mongo.db.articles.find().limit(5))
+        
+        # Get unique types
+        unique_types = mongo.db.articles.distinct('type')
+        
+        # Convert ObjectId to string
+        for article in sample_articles:
+            article['_id'] = str(article['_id'])
+        
+        return jsonify({
+            'success': True,
+            'collections': collections,
+            'articles_count': articles_count,
+            'unique_types': unique_types,
+            'sample_articles': sample_articles
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Create sample articles for testing
+@main.route('/api/create-sample-articles', methods=['POST'])
+def create_sample_articles():
+    """Create sample articles for testing"""
+    try:
+        mongo = get_mongo()
+        
+        sample_articles = [
+            {
+                'title': 'FotMob: Premier League Transfer News',
+                'content': 'Latest transfer updates from the Premier League including major signings and departures.',
+                'summary': 'Comprehensive coverage of Premier League transfer activities with expert analysis.',
+                'type': 'fotmob',
+                'url': 'https://fotmob.com/news/premier-league-transfers',
+                'created_at': datetime.utcnow()
+            },
+            {
+                'title': 'FotMob: Champions League Predictions',
+                'content': 'Expert predictions for the upcoming Champions League matches and potential winners.',
+                'summary': 'In-depth analysis of Champions League teams and their chances of success.',
+                'type': 'fotmob',
+                'url': 'https://fotmob.com/news/champions-league-predictions',
+                'created_at': datetime.utcnow()
+            },
+            {
+                'title': 'FotMob: La Liga Weekend Review',
+                'content': 'Complete review of the weekend matches in La Liga with highlights and analysis.',
+                'summary': 'Comprehensive coverage of La Liga weekend action with key moments and statistics.',
+                'type': 'fotmob',
+                'url': 'https://fotmob.com/news/la-liga-weekend-review',
+                'created_at': datetime.utcnow()
+            },
+            {
+                'title': 'General Football News',
+                'content': 'General football news and updates from around the world.',
+                'summary': 'Latest football news covering various leagues and competitions worldwide.',
+                'type': 'news',
+                'url': 'https://example.com/football-news',
+                'created_at': datetime.utcnow()
+            }
+        ]
+        
+        # Insert sample articles
+        result = mongo.db.articles.insert_many(sample_articles)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Created {len(result.inserted_ids)} sample articles',
+            'inserted_ids': [str(id) for id in result.inserted_ids]
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# API to get articles for frontend
+@main.route('/api/articles', methods=['GET'])
+def get_articles():
+    """API to get articles for frontend"""
+    try:
+        mongo = get_mongo()
+        
+        # Get type filter from query parameter
+        selected_type = request.args.get('type', 'fotmob')
+        
+        # Query articles with type filter, sorted by newest first
+        query = {'type': selected_type} if selected_type != 'all' else {}
+        articles = list(mongo.db.articles.find(query).sort('created_at', -1))
+        
+        # Get unique types for the dropdown
+        unique_types = mongo.db.articles.distinct('type')
+        
+        # Convert ObjectId to string for JSON serialization
+        for article in articles:
+            article['_id'] = str(article['_id'])
+            if 'created_at' in article:
+                article['created_at'] = article['created_at'].isoformat() if hasattr(article['created_at'], 'isoformat') else str(article['created_at'])
+        
+        return jsonify({
+            'success': True,
+            'articles': articles,
+            'selected_type': selected_type,
+            'available_types': unique_types,
+            'total_count': len(articles)
+        })
+        
+    except Exception as e:
+        log_exception("get_articles", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 # API Users
 @main.route('/api/users', methods=['GET'])

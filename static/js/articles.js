@@ -5,16 +5,21 @@
 class ArticlesManager {
     constructor() {
         this.typeFilter = document.getElementById('type-filter');
-        this.statsCount = document.querySelector('.stats-count');
-        this.articlesGrid = document.querySelector('.apple-grid');
+        this.statsCount = document.getElementById('articles-count');
+        this.currentType = document.getElementById('current-type');
+        this.articlesGrid = document.getElementById('articles-grid');
+        this.loadingState = document.getElementById('loading-state');
+        this.errorState = document.getElementById('error-state');
+        this.emptyState = document.getElementById('empty-state');
         this.modal = document.getElementById('article-modal');
         this.modalTitle = document.getElementById('modal-title');
         this.modalContent = document.getElementById('modal-content');
+        this.currentTypeFilter = 'fotmob';
     }
 
     init() {
         this.bindEvents();
-        this.updateArticleCount();
+        this.loadArticles();
     }
 
     bindEvents() {
@@ -42,24 +47,122 @@ class ArticlesManager {
         }
     }
 
-    filterByType(type) {
-        // Update URL with new filter
-        const url = new URL(window.location);
-        if (type === 'all') {
-            url.searchParams.delete('type');
-        } else {
-            url.searchParams.set('type', type);
+    async loadArticles() {
+        try {
+            this.showLoading();
+            
+            const url = new URL('/api/articles', window.location.origin);
+            if (this.currentTypeFilter !== 'all') {
+                url.searchParams.set('type', this.currentTypeFilter);
+            }
+            
+            console.log('🔍 Loading articles from:', url.toString());
+            
+            const response = await fetch(url.toString());
+            const data = await response.json();
+            
+            console.log('📊 API Response:', data);
+            
+            if (data.success) {
+                this.renderArticles(data.articles);
+                this.updateStats(data.total_count, data.selected_type);
+                this.updateTypeFilter(data.available_types);
+            } else {
+                this.showError(data.error || 'Failed to load articles');
+            }
+        } catch (error) {
+            console.error('❌ Error loading articles:', error);
+            this.showError('Network error: ' + error.message);
         }
-        
-        // Navigate to new URL
-        window.location.href = url.toString();
     }
 
-    updateArticleCount() {
-        if (this.statsCount && this.articlesGrid) {
-            const articleCards = this.articlesGrid.querySelectorAll('.apple-card');
-            const count = articleCards.length;
+    filterByType(type) {
+        this.currentTypeFilter = type;
+        this.loadArticles();
+    }
+
+    showLoading() {
+        this.loadingState.style.display = 'block';
+        this.errorState.style.display = 'none';
+        this.articlesGrid.style.display = 'none';
+        this.emptyState.style.display = 'none';
+    }
+
+    showError(message) {
+        this.loadingState.style.display = 'none';
+        this.errorState.style.display = 'block';
+        this.articlesGrid.style.display = 'none';
+        this.emptyState.style.display = 'none';
+        
+        const errorMessage = document.getElementById('error-message');
+        if (errorMessage) {
+            errorMessage.textContent = message;
+        }
+    }
+
+    renderArticles(articles) {
+        this.loadingState.style.display = 'none';
+        this.errorState.style.display = 'none';
+        
+        if (articles.length === 0) {
+            this.emptyState.style.display = 'block';
+            this.articlesGrid.style.display = 'none';
+        } else {
+            this.emptyState.style.display = 'none';
+            this.articlesGrid.style.display = 'grid';
+            
+            this.articlesGrid.innerHTML = articles.map(article => `
+                <article class="apple-card" data-article-id="${article._id}">
+                    <div class="card-header">
+                        <div class="card-type">
+                            <span class="apple-badge apple-badge-${article.type}">${article.type.charAt(0).toUpperCase() + article.type.slice(1)}</span>
+                        </div>
+                        <div class="card-date">
+                            ${article.created_at ? article.created_at.substring(0, 10) : 'N/A'}
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <h2 class="card-title">${article.title || 'Untitled Article'}</h2>
+                        <p class="card-text">${article.summary || (article.content ? article.content.substring(0, 150) + '...' : 'No content available')}</p>
+                    </div>
+                    
+                    <div class="card-footer">
+                        ${article.url ? `
+                            <a href="${article.url}" target="_blank" class="apple-link">
+                                <span>View Source</span>
+                                <i class="fas fa-arrow-up-right-from-square"></i>
+                            </a>
+                        ` : ''}
+                        <button class="apple-button apple-button-primary" onclick="viewArticle('${article._id}')">
+                            <span>View Details</span>
+                        </button>
+                    </div>
+                </article>
+            `).join('');
+        }
+    }
+
+    updateStats(count, type) {
+        if (this.statsCount) {
             this.statsCount.textContent = `${count} article${count !== 1 ? 's' : ''}`;
+        }
+        if (this.currentType) {
+            this.currentType.textContent = type === 'all' ? 'All Types' : type.charAt(0).toUpperCase() + type.slice(1);
+        }
+    }
+
+    updateTypeFilter(availableTypes) {
+        if (this.typeFilter && availableTypes) {
+            // Update the select options if needed
+            const currentOptions = Array.from(this.typeFilter.options).map(opt => opt.value);
+            const newTypes = ['all', ...availableTypes];
+            
+            if (JSON.stringify(currentOptions) !== JSON.stringify(newTypes)) {
+                this.typeFilter.innerHTML = newTypes.map(type => 
+                    `<option value="${type}" ${type === this.currentTypeFilter ? 'selected' : ''}>${type === 'all' ? 'All Types' : type.charAt(0).toUpperCase() + type.slice(1)}</option>`
+                ).join('');
+            }
         }
     }
 

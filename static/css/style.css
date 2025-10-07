@@ -2254,6 +2254,28 @@ body {
     color: var(--text-secondary);
 }
 
+/* Apple Loading State */
+.apple-loading {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-secondary);
+}
+
+.loading-spinner {
+    margin-bottom: 20px;
+}
+
+.loading-spinner i {
+    font-size: 32px;
+    color: var(--primary-color);
+}
+
+.loading-text {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
 /* Apple Empty State */
 .apple-empty {
     text-align: center;

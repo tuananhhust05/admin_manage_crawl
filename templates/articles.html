@@ -34,65 +34,46 @@
         <!-- Apple-style Stats Bar -->
         <div class="apple-stats">
             <div class="stats-content">
-                <span class="stats-count">{{ articles|length }} articles</span>
+                <span class="stats-count" id="articles-count">Loading...</span>
                 <span class="stats-separator">•</span>
-                <span class="stats-type">{{ selected_type|title if selected_type != 'all' else 'All Types' }}</span>
+                <span class="stats-type" id="current-type">All Types</span>
             </div>
         </div>
 
         <!-- Apple-style Content Area -->
         <main class="apple-content">
-            {% if error %}
-            <div class="apple-alert apple-alert-error">
+            <!-- Loading State -->
+            <div id="loading-state" class="apple-loading">
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                </div>
+                <div class="loading-text">Loading articles...</div>
+            </div>
+
+            <!-- Error State -->
+            <div id="error-state" class="apple-alert apple-alert-error" style="display: none;">
                 <div class="alert-icon">
                     <i class="fas fa-exclamation-triangle"></i>
                 </div>
                 <div class="alert-content">
                     <div class="alert-title">Error</div>
-                    <div class="alert-message">{{ error }}</div>
+                    <div class="alert-message" id="error-message">Failed to load articles</div>
                 </div>
             </div>
-            {% elif articles %}
-            <div class="apple-grid">
-                {% for article in articles %}
-                <article class="apple-card">
-                    <div class="card-header">
-                        <div class="card-type">
-                            <span class="apple-badge apple-badge-{{ article.type }}">{{ article.type|title }}</span>
-                        </div>
-                        <div class="card-date">
-                            {{ article.created_at[:10] if article.created_at else 'N/A' }}
-                        </div>
-                    </div>
-                    
-                    <div class="card-body">
-                        <h2 class="card-title">{{ article.title or 'Untitled Article' }}</h2>
-                        <p class="card-text">{{ article.summary or article.content[:150] + '...' if article.content and article.content|length > 150 else article.content or 'No content available' }}</p>
-                    </div>
-                    
-                    <div class="card-footer">
-                        {% if article.url %}
-                        <a href="{{ article.url }}" target="_blank" class="apple-link">
-                            <span>View Source</span>
-                            <i class="fas fa-arrow-up-right-from-square"></i>
-                        </a>
-                        {% endif %}
-                        <button class="apple-button apple-button-primary" onclick="viewArticle('{{ article._id }}')">
-                            <span>View Details</span>
-                        </button>
-                    </div>
-                </article>
-                {% endfor %}
+
+            <!-- Articles Grid -->
+            <div id="articles-grid" class="apple-grid" style="display: none;">
+                <!-- Articles will be loaded here by JavaScript -->
             </div>
-            {% else %}
-            <div class="apple-empty">
+
+            <!-- Empty State -->
+            <div id="empty-state" class="apple-empty" style="display: none;">
                 <div class="empty-icon">
                     <i class="fas fa-newspaper"></i>
                 </div>
                 <div class="empty-title">No articles found</div>
                 <div class="empty-subtitle">No articles match the selected filter criteria.</div>
             </div>
-            {% endif %}
         </main>
     </div>
 
