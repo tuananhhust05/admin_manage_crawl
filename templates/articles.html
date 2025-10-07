@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Articles - YouTube Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="articles-container">
+        <!-- Apple-style Navigation Header -->
+        <nav class="apple-nav">
+            <div class="nav-content">
+                <div class="nav-left">
+                    <h1 class="nav-title">Articles</h1>
+                </div>
+                <div class="nav-right">
+                    <div class="nav-filter">
+                        <select id="type-filter" class="apple-select">
+                            <option value="all">All Types</option>
+                            {% for type in available_types %}
+                            <option value="{{ type }}" {% if type == selected_type %}selected{% endif %}>{{ type|title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Apple-style Stats Bar -->
+        <div class="apple-stats">
+            <div class="stats-content">
+                <span class="stats-count">{{ articles|length }} articles</span>
+                <span class="stats-separator">•</span>
+                <span class="stats-type">{{ selected_type|title if selected_type != 'all' else 'All Types' }}</span>
+            </div>
+        </div>
+
+        <!-- Apple-style Content Area -->
+        <main class="apple-content">
+            {% if error %}
+            <div class="apple-alert apple-alert-error">
+                <div class="alert-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="alert-content">
+                    <div class="alert-title">Error</div>
+                    <div class="alert-message">{{ error }}</div>
+                </div>
+            </div>
+            {% elif articles %}
+            <div class="apple-grid">
+                {% for article in articles %}
+                <article class="apple-card">
+                    <div class="card-header">
+                        <div class="card-type">
+                            <span class="apple-badge apple-badge-{{ article.type }}">{{ article.type|title }}</span>
+                        </div>
+                        <div class="card-date">
+                            {{ article.created_at[:10] if article.created_at else 'N/A' }}
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <h2 class="card-title">{{ article.title or 'Untitled Article' }}</h2>
+                        <p class="card-text">{{ article.summary or article.content[:150] + '...' if article.content and article.content|length > 150 else article.content or 'No content available' }}</p>
+                    </div>
+                    
+                    <div class="card-footer">
+                        {% if article.url %}
+                        <a href="{{ article.url }}" target="_blank" class="apple-link">
+                            <span>View Source</span>
+                            <i class="fas fa-arrow-up-right-from-square"></i>
+                        </a>
+                        {% endif %}
+                        <button class="apple-button apple-button-primary" onclick="viewArticle('{{ article._id }}')">
+                            <span>View Details</span>
+                        </button>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="apple-empty">
+                <div class="empty-icon">
+                    <i class="fas fa-newspaper"></i>
+                </div>
+                <div class="empty-title">No articles found</div>
+                <div class="empty-subtitle">No articles match the selected filter criteria.</div>
+            </div>
+            {% endif %}
+        </main>
+    </div>
+
+    <!-- Apple-style Modal -->
+    <div id="article-modal" class="apple-modal">
+        <div class="modal-backdrop" onclick="closeModal()"></div>
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2 id="modal-title" class="modal-title">Article Details</h2>
+                <button class="modal-close" onclick="closeModal()">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-content">
+                    <!-- Article details will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/articles.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            ArticlesManager.init();
+        });
+    </script>
+</body>
+</html>

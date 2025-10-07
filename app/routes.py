@@ -118,6 +118,42 @@ def video_detail_page():
 def article_summarizer_page():
     return render_template('article_summarizer.html')
 
+# Articles Page
+@main.route('/articles', methods=['GET'])
+def articles_page():
+    """Render the articles page with type filtering"""
+    try:
+        mongo = get_mongo()
+        
+        # Get type filter from query parameter
+        selected_type = request.args.get('type', 'fotmob')
+        
+        # Query articles with type filter, sorted by newest first
+        query = {'type': selected_type} if selected_type != 'all' else {}
+        articles = list(mongo.db.articles.find(query).sort('created_at', -1))
+        
+        # Get unique types for the dropdown
+        unique_types = mongo.db.articles.distinct('type')
+        
+        # Convert ObjectId to string for JSON serialization
+        for article in articles:
+            article['_id'] = str(article['_id'])
+            if 'created_at' in article:
+                article['created_at'] = article['created_at'].isoformat() if hasattr(article['created_at'], 'isoformat') else str(article['created_at'])
+        
+        return render_template('articles.html', 
+                             articles=articles, 
+                             selected_type=selected_type,
+                             available_types=unique_types)
+        
+    except Exception as e:
+        log_exception("articles_page", e)
+        return render_template('articles.html', 
+                             articles=[], 
+                             selected_type='fotmob',
+                             available_types=['fotmob'],
+                             error=str(e))
+
 # API Users
 @main.route('/api/users', methods=['GET'])
 def get_users():
