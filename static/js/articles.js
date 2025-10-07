@@ -111,11 +111,15 @@ class ArticlesManager {
             this.emptyState.style.display = 'none';
             this.articlesGrid.style.display = 'grid';
             
-            this.articlesGrid.innerHTML = articles.map(article => `
+            this.articlesGrid.innerHTML = articles.map(article => {
+                const articleType = article.source || article.type || 'unknown';
+                const typeDisplay = articleType.charAt(0).toUpperCase() + articleType.slice(1);
+                
+                return `
                 <article class="apple-card" data-article-id="${article._id}">
                     <div class="card-header">
                         <div class="card-type">
-                            <span class="apple-badge apple-badge-${article.type}">${article.type.charAt(0).toUpperCase() + article.type.slice(1)}</span>
+                            <span class="apple-badge apple-badge-${articleType}">${typeDisplay}</span>
                         </div>
                         <div class="card-date">
                             ${article.created_at ? article.created_at.substring(0, 10) : 'N/A'}
@@ -139,7 +143,8 @@ class ArticlesManager {
                         </button>
                     </div>
                 </article>
-            `).join('');
+                `;
+            }).join('');
         }
     }
 
@@ -206,7 +211,7 @@ class ArticlesManager {
         // Extract data from the card
         const title = articleCard.querySelector('.card-title')?.textContent || 'Untitled';
         const summary = articleCard.querySelector('.card-text')?.textContent || 'No summary available';
-        const type = articleCard.querySelector('.apple-badge')?.textContent || 'Unknown';
+        const source = articleCard.querySelector('.apple-badge')?.textContent || 'Unknown';
         const date = articleCard.querySelector('.card-date')?.textContent || 'Unknown date';
         const link = articleCard.querySelector('.apple-link')?.href || '';
 
@@ -214,7 +219,7 @@ class ArticlesManager {
             id: articleId,
             title: title,
             summary: summary,
-            type: type,
+            source: source,
             date: date,
             link: link
         };
@@ -227,7 +232,7 @@ class ArticlesManager {
             <div class="apple-article-detail">
                 <div class="detail-header">
                     <div class="detail-meta">
-                        <span class="apple-badge apple-badge-${article.type.toLowerCase()}">${article.type}</span>
+                        <span class="apple-badge apple-badge-${article.source.toLowerCase()}">${article.source}</span>
                         <span class="detail-date">${article.date}</span>
                     </div>
                 </div>
@@ -293,7 +298,11 @@ function closeModal() {
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.articlesManager = new ArticlesManager();
-    window.articlesManager.init();
+    if (window.articlesManager && typeof window.articlesManager.init === 'function') {
+        window.articlesManager.init();
+    } else {
+        console.error('ArticlesManager not properly initialized');
+    }
 });
 
 // Add some additional CSS for the modal content

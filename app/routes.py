@@ -182,7 +182,7 @@ def debug_articles():
         sample_articles = list(mongo.db.articles.find().limit(5))
         
         # Get unique types
-        unique_types = mongo.db.articles.distinct('type')
+        unique_types = mongo.db.articles.distinct('source')
         
         # Convert ObjectId to string
         for article in sample_articles:
@@ -214,7 +214,7 @@ def create_sample_articles():
                 'title': 'FotMob: Premier League Transfer News',
                 'content': 'Latest transfer updates from the Premier League including major signings and departures.',
                 'summary': 'Comprehensive coverage of Premier League transfer activities with expert analysis.',
-                'type': 'fotmob',
+                'source': 'fotmob',
                 'url': 'https://fotmob.com/news/premier-league-transfers',
                 'created_at': datetime.utcnow()
             },
@@ -222,7 +222,7 @@ def create_sample_articles():
                 'title': 'FotMob: Champions League Predictions',
                 'content': 'Expert predictions for the upcoming Champions League matches and potential winners.',
                 'summary': 'In-depth analysis of Champions League teams and their chances of success.',
-                'type': 'fotmob',
+                'source': 'fotmob',
                 'url': 'https://fotmob.com/news/champions-league-predictions',
                 'created_at': datetime.utcnow()
             },
@@ -230,7 +230,7 @@ def create_sample_articles():
                 'title': 'FotMob: La Liga Weekend Review',
                 'content': 'Complete review of the weekend matches in La Liga with highlights and analysis.',
                 'summary': 'Comprehensive coverage of La Liga weekend action with key moments and statistics.',
-                'type': 'fotmob',
+                'source': 'fotmob',
                 'url': 'https://fotmob.com/news/la-liga-weekend-review',
                 'created_at': datetime.utcnow()
             },
@@ -238,7 +238,7 @@ def create_sample_articles():
                 'title': 'General Football News',
                 'content': 'General football news and updates from around the world.',
                 'summary': 'Latest football news covering various leagues and competitions worldwide.',
-                'type': 'news',
+                'source': 'news',
                 'url': 'https://example.com/football-news',
                 'created_at': datetime.utcnow()
             }
@@ -274,7 +274,7 @@ def get_articles():
         articles = list(mongo.db.articles.find(query).sort('created_at', -1))
         
         # Get unique types for the dropdown
-        unique_types = mongo.db.articles.distinct('type')
+        unique_types = mongo.db.articles.distinct('source')
         
         # Convert ObjectId to string for JSON serialization
         for article in articles:
