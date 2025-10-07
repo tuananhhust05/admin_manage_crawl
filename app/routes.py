@@ -1579,6 +1579,170 @@ def crawl_and_chunk_video():
             'error': str(e)
         }), 500
 
+@main.route('/api/index-content', methods=['POST'])
+def index_content():
+    """
+    API để index content thành chunks và lưu vào Elasticsearch
+    Nhận vào: url_channel, url, content
+    """
+    try:
+        data = request.get_json()
+        url_channel = data.get('url_channel')
+        url = data.get('url')
+        content = data.get('content')
+        
+        if not all([url_channel, url, content]):
+            return jsonify({
+                'success': False,
+                'error': 'url_channel, url, and content are required'
+            }), 400
+        
+        print(f"Processing content for URL: {url}")
+        
+        # BƯỚC 1: KIỂM TRA VÀ XÓA DỮ LIỆU CŨ (nếu có)
+        print("Step 1: Checking and deleting existing data...")
+        try:
+            delete_query = {
+                "query": {
+                    "term": {
+                        "url": url
+                    }
+                }
+            }
+            response = es_connection.delete_by_query(
+                index=ES_INDEX_NAME,
+                body=delete_query
+            )
+            deleted_count = response.get('deleted', 0)
+            if deleted_count > 0:
+                print(f"✅ Đã xóa thành công {deleted_count} document cũ.")
+            else:
+                print("ℹ️ Không tìm thấy document nào khớp để xóa.")
+        except Exception as e:
+            print(f"⚠️ Lỗi khi xóa dữ liệu cũ: {str(e)}")
+        
+        # BƯỚC 2: CHIA CONTENT THÀNH CHUNKS
+        print("Step 2: Splitting content into chunks...")
+        chunks_data = split_content_into_chunks(content)
+        
+        if not chunks_data:
+            return jsonify({
+                'success': False,
+                'error': 'No chunks extracted from content',
+                'step': 'chunk_content'
+            }), 500
+        
+        print(f"Created {len(chunks_data)} chunks from content")
+        
+        # BƯỚC 3: MÃ HÓA VÀ INDEX VÀO ELASTICSEARCH
+        print("Step 3: Encoding and indexing to Elasticsearch...")
+        indexed_count = 0
+        es_errors = []
+        
+        try:
+            for i, chunk_text in enumerate(chunks_data):
+                try:
+                    # Mã hóa chunk thành vector
+                    vector = transformer_model.encode(chunk_text).tolist()
+                    
+                    # Chuẩn bị document để index
+                    document = {
+                        'url': url,
+                        'url_channel': url_channel,
+                        'origin_content': chunk_text,
+                        'vector': vector,
+                        'time': int(time.time()),
+                        'chunk_index': i
+                    }
+                    
+                    # Index document vào Elasticsearch
+                    response = es_connection.index(index=ES_INDEX_NAME, body=document)
+                    indexed_count += 1
+                    print(f"   ✔ Chunk {i+1}/{len(chunks_data)} indexed successfully")
+                    
+                except Exception as e:
+                    error_msg = f"Error indexing chunk {i+1}: {str(e)}"
+                    print(f"   ❌ {error_msg}")
+                    es_errors.append(error_msg)
+                    
+        except Exception as e:
+            print(f"❌ Elasticsearch indexing error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        
+        # BƯỚC 4: TRẢ VỀ KẾT QUẢ
+        result = {
+            'success': True,
+            'message': f'Successfully indexed {indexed_count} chunks from content',
+            'total_chunks': len(chunks_data),
+            'indexed_count': indexed_count,
+            'url': url,
+            'url_channel': url_channel
+        }
+        
+        if es_errors:
+            result['warnings'] = es_errors
+            result['message'] += f' (with {len(es_errors)} errors)'
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        log_exception("index_content", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+def split_content_into_chunks(content, max_chunk_size=500, overlap=50):
+    """
+    Chia content thành các chunks phù hợp
+    """
+    if not content or not content.strip():
+        return []
+    
+    # Làm sạch content
+    content = content.strip()
+    
+    # Nếu content ngắn hơn max_chunk_size, trả về 1 chunk
+    if len(content) <= max_chunk_size:
+        return [content]
+    
+    chunks = []
+    start = 0
+    
+    while start < len(content):
+        # Xác định vị trí kết thúc chunk
+        end = start + max_chunk_size
+        
+        if end >= len(content):
+            # Chunk cuối cùng
+            chunks.append(content[start:].strip())
+            break
+        
+        # Tìm vị trí tốt để cắt (ưu tiên dấu câu, xuống dòng)
+        cut_positions = [
+            content.rfind('.', start, end),
+            content.rfind('!', start, end),
+            content.rfind('?', start, end),
+            content.rfind('\n', start, end),
+            content.rfind(' ', start, end)
+        ]
+        
+        # Chọn vị trí cắt tốt nhất
+        best_cut = max([pos for pos in cut_positions if pos > start + max_chunk_size // 2])
+        
+        if best_cut > start:
+            end = best_cut + 1
+        
+        chunk = content[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        
+        # Tính toán vị trí bắt đầu chunk tiếp theo (có overlap)
+        start = max(start + 1, end - overlap)
+    
+    return chunks
+
 @main.route('/api/process-video-srt', methods=['POST'])
 def process_video_srt():
     """
