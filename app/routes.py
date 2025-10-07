@@ -270,7 +270,7 @@ def get_articles():
         selected_type = request.args.get('type', 'fotmob')
         
         # Query articles with type filter, sorted by newest first
-        query = {'type': selected_type} if selected_type != 'all' else {}
+        query = {'source': selected_type} if selected_type != 'all' else {}
         articles = list(mongo.db.articles.find(query).sort('created_at', -1))
         
         # Get unique types for the dropdown
