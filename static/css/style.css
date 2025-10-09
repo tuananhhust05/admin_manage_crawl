@@ -2175,6 +2175,15 @@ body {
     box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
 }
 
+.apple-card.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.apple-card.disabled .article-checkbox {
+    cursor: not-allowed;
+}
+
 .card-selection {
     position: absolute;
     top: 12px;
@@ -2440,6 +2449,23 @@ body {
 
 .generated-paragraph:last-child {
     margin-bottom: 0;
+}
+
+.generation-time {
+    text-align: center;
+    margin-bottom: 20px;
+    padding: 8px 16px;
+    background: rgba(0, 122, 255, 0.1);
+    border-radius: 8px;
+    color: #007AFF;
+    font-size: 12px;
+}
+
+.search-highlight {
+    background: #FFD700;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: 500;
 }
 
 .modal-header {

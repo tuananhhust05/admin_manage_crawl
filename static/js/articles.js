@@ -11,7 +11,6 @@ class ArticlesManager {
         this.currentType = document.getElementById('current-type');
         this.selectedCount = document.getElementById('selected-count');
         this.selectionActions = document.getElementById('selection-actions');
-        this.selectAllBtn = document.getElementById('select-all-btn');
         this.clearSelectionBtn = document.getElementById('clear-selection-btn');
         this.generateArticleBtn = document.getElementById('generate-article-btn');
         this.articlesGrid = document.getElementById('articles-grid');
@@ -58,11 +57,6 @@ class ArticlesManager {
         }
 
         // Selection buttons
-        if (this.selectAllBtn) {
-            this.selectAllBtn.addEventListener('click', () => {
-                this.selectAllArticles();
-            });
-        }
 
         if (this.clearSelectionBtn) {
             this.clearSelectionBtn.addEventListener('click', () => {
@@ -205,11 +199,19 @@ class ArticlesManager {
                 const typeDisplay = articleType.charAt(0).toUpperCase() + articleType.slice(1);
                 const isSelected = this.selectedArticles.has(article._id);
                 
+                // Get full content and highlight search terms
+                const fullContent = article.content || article.summary || 'No content available';
+                const highlightedContent = this.highlightSearchTerms(fullContent);
+                const highlightedTitle = this.highlightSearchTerms(article.title || 'Untitled Article');
+                
+                // Check if selection is disabled (already at limit and not selected)
+                const isDisabled = !isSelected && this.selectedArticles.size >= 3;
+                
                 return `
-                <article class="apple-card ${isSelected ? 'selected' : ''}" data-article-id="${article._id}">
+                <article class="apple-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}" data-article-id="${article._id}">
                     <div class="card-header">
                         <div class="card-selection">
-                            <input type="checkbox" class="article-checkbox" ${isSelected ? 'checked' : ''} 
+                            <input type="checkbox" class="article-checkbox" ${isSelected ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}
                                    onchange="window.articlesManager.toggleSelection('${article._id}')">
                         </div>
                         <div class="card-type">
@@ -221,8 +223,8 @@ class ArticlesManager {
                     </div>
                     
                     <div class="card-body">
-                        <h2 class="card-title">${article.title || 'Untitled Article'}</h2>
-                        <p class="card-text">${article.summary || (article.content ? article.content.substring(0, 150) + '...' : 'No content available')}</p>
+                        <h2 class="card-title">${highlightedTitle}</h2>
+                        <div class="card-text">${highlightedContent}</div>
                     </div>
                     
                     <div class="card-footer">
@@ -240,6 +242,24 @@ class ArticlesManager {
                 `;
             }).join('');
         }
+    }
+
+    highlightSearchTerms(text) {
+        if (!this.currentSearchQuery || !text) {
+            return text;
+        }
+        
+        const searchTerms = this.currentSearchQuery.trim().split(/\s+/);
+        let highlightedText = text;
+        
+        searchTerms.forEach(term => {
+            if (term.length > 2) { // Only highlight terms longer than 2 characters
+                const regex = new RegExp(`(${term})`, 'gi');
+                highlightedText = highlightedText.replace(regex, '<mark class="search-highlight">$1</mark>');
+            }
+        });
+        
+        return highlightedText;
     }
 
     updateStats(count, type) {
@@ -289,15 +309,6 @@ class ArticlesManager {
         }
     }
 
-    selectAllArticles() {
-        const maxSelect = Math.min(3, this.allArticles.length);
-        this.selectedArticles.clear();
-        for (let i = 0; i < maxSelect; i++) {
-            this.selectedArticles.add(this.allArticles[i]._id);
-        }
-        this.updateSelectionUI();
-        this.renderArticles(this.allArticles);
-    }
 
     clearSelection() {
         this.selectedArticles.clear();
@@ -344,7 +355,7 @@ class ArticlesManager {
             const result = await response.json();
 
             if (result.success) {
-                this.showGeneratedArticle(result.generated_article);
+                this.showGeneratedArticle(result);
                 this.showToast('success', 'Article Generated', 'New article has been generated successfully!');
             } else {
                 this.showToast('error', 'Generation Failed', result.error || 'Failed to generate article');
@@ -359,13 +370,37 @@ class ArticlesManager {
         }
     }
 
-    showGeneratedArticle(content) {
+    showGeneratedArticle(data) {
         if (this.generatedContent) {
-            // Split content by paragraphs and render
+            let content = '';
+            
+            // Handle different response formats
+            if (typeof data === 'string') {
+                content = data;
+            } else if (data.article) {
+                content = data.article;
+            } else if (data.generated_article) {
+                content = data.generated_article;
+            } else {
+                content = JSON.stringify(data);
+            }
+            
+            // Remove markdown formatting and split by paragraphs
+            content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
             const paragraphs = content.split('\n').filter(p => p.trim());
             this.generatedContent.innerHTML = paragraphs.map(paragraph => 
                 `<p class="generated-paragraph">${paragraph.trim()}</p>`
             ).join('');
+            
+            // Show elapsed time if available
+            if (data.elapsed_seconds) {
+                const timeInfo = document.createElement('div');
+                timeInfo.className = 'generation-time';
+                timeInfo.innerHTML = `<small>Generated in ${data.elapsed_seconds}s</small>`;
+                this.generatedContent.insertBefore(timeInfo, this.generatedContent.firstChild);
+            }
         }
         
         if (this.generatedModal) {
