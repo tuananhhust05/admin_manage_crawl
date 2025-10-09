@@ -2259,10 +2259,7 @@ body {
     color: var(--text-secondary);
     line-height: 1.5;
     margin: 0;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    word-wrap: break-word;
 }
 
 .card-footer {
@@ -2592,5 +2589,6 @@ body {
 
     .card-text {
         font-size: 14px;
+        word-wrap: break-word;
     }
 }

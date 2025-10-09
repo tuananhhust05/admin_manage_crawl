@@ -224,7 +224,7 @@ class ArticlesManager {
                     
                     <div class="card-body">
                         <h2 class="card-title">${highlightedTitle}</h2>
-                        <div class="card-text">${highlightedContent}</div>
+                        <div class="card-text">${highlightedContent.replace(/\n/g, '<br>')}</div>
                     </div>
                     
                     <div class="card-footer">
@@ -341,8 +341,8 @@ class ArticlesManager {
             this.generateArticleBtn.disabled = true;
             this.generateArticleBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
 
-            // Call API
-            const response = await fetch('/api/generate-article', {
+            // Call external API directly
+            const response = await fetch('http://46.62.152.241:5002/generate-article', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -354,7 +354,7 @@ class ArticlesManager {
 
             const result = await response.json();
 
-            if (result.success) {
+            if (response.ok) {
                 this.showGeneratedArticle(result);
                 this.showToast('success', 'Article Generated', 'New article has been generated successfully!');
             } else {
