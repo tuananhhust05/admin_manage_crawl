@@ -262,15 +262,30 @@ def create_sample_articles():
 # API to get articles for frontend
 @main.route('/api/articles', methods=['GET'])
 def get_articles():
-    """API to get articles for frontend"""
+    """API to get articles for frontend with search and filter support"""
     try:
         mongo = get_mongo()
         
-        # Get type filter from query parameter
+        # Get parameters from query
         selected_type = request.args.get('type', 'fotmob')
+        search_query = request.args.get('search', '').strip()
         
-        # Query articles with type filter, sorted by newest first
-        query = {'source': selected_type} if selected_type != 'all' else {}
+        # Build query
+        query = {}
+        
+        # Add type filter
+        if selected_type != 'all':
+            query['source'] = selected_type
+        
+        # Add search filter
+        if search_query:
+            query['$or'] = [
+                {'title': {'$regex': search_query, '$options': 'i'}},
+                {'content': {'$regex': search_query, '$options': 'i'}},
+                {'summary': {'$regex': search_query, '$options': 'i'}}
+            ]
+        
+        # Query articles with filters, sorted by newest first
         articles = list(mongo.db.articles.find(query).sort('created_at', -1))
         
         # Get unique types for the dropdown
@@ -286,12 +301,63 @@ def get_articles():
             'success': True,
             'articles': articles,
             'selected_type': selected_type,
+            'search_query': search_query,
             'available_types': unique_types,
             'total_count': len(articles)
         })
         
     except Exception as e:
         log_exception("get_articles", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# API to generate article from selected articles
+@main.route('/api/generate-article', methods=['POST'])
+def generate_article():
+    """Generate article from selected articles"""
+    try:
+        data = request.get_json()
+        articles = data.get('articles', [])
+        
+        if not articles:
+            return jsonify({
+                'success': False,
+                'error': 'No articles provided'
+            }), 400
+        
+        if len(articles) > 3:
+            return jsonify({
+                'success': False,
+                'error': 'Maximum 3 articles allowed'
+            }), 400
+        
+        # Call external API
+        import requests
+        external_api_url = 'http://46.62.152.241:5002/generate-article'
+        
+        payload = {
+            'articles': articles
+        }
+        
+        response = requests.post(external_api_url, json=payload)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({
+                'success': True,
+                'generated_article': result.get('generated_article', ''),
+                'articles_count': len(articles)
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'External API error: {response.status_code}'
+            }), 500
+            
+    except Exception as e:
+        log_exception("generate_article", e)
         return jsonify({
             'success': False,
             'error': str(e)

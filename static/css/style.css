@@ -2021,6 +2021,57 @@ body {
     z-index: 100;
 }
 
+.nav-search {
+    margin-right: 16px;
+}
+
+.search-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.apple-search {
+    width: 280px;
+    padding: 8px 12px 8px 36px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.apple-search:focus {
+    outline: none;
+    border-color: #007AFF;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    color: #8E8E93;
+    font-size: 14px;
+    pointer-events: none;
+}
+
+.clear-search {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    color: #8E8E93;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.clear-search:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #000;
+}
+
 .nav-content {
     max-width: 1200px;
     margin: 0 auto;
@@ -2061,6 +2112,9 @@ body {
 .apple-stats {
     background: var(--background-secondary);
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .stats-content {
@@ -2072,6 +2126,19 @@ body {
     gap: var(--spacing-sm);
     font-size: 14px;
     color: var(--text-secondary);
+    flex: 1;
+}
+
+.stats-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding-right: var(--spacing-xl);
+}
+
+.stats-selected {
+    color: #007AFF;
+    font-weight: 500;
 }
 
 .stats-separator {
@@ -2099,6 +2166,26 @@ body {
     border-radius: 16px;
     padding: 24px;
     transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    cursor: pointer;
+    position: relative;
+}
+
+.apple-card.selected {
+    border-color: #007AFF;
+    box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
+}
+
+.card-selection {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 2;
+}
+
+.article-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: #007AFF;
     cursor: pointer;
 }
 
@@ -2338,6 +2425,21 @@ body {
     overflow: hidden;
     position: relative;
     z-index: 1;
+}
+
+.modal-large {
+    max-width: 800px;
+    max-height: 90vh;
+}
+
+.generated-paragraph {
+    margin-bottom: 16px;
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+
+.generated-paragraph:last-child {
+    margin-bottom: 0;
 }
 
 .modal-header {

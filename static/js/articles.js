@@ -5,8 +5,15 @@
 class ArticlesManager {
     constructor() {
         this.typeFilter = document.getElementById('type-filter');
+        this.searchInput = document.getElementById('search-input');
+        this.clearSearchBtn = document.getElementById('clear-search');
         this.statsCount = document.getElementById('articles-count');
         this.currentType = document.getElementById('current-type');
+        this.selectedCount = document.getElementById('selected-count');
+        this.selectionActions = document.getElementById('selection-actions');
+        this.selectAllBtn = document.getElementById('select-all-btn');
+        this.clearSelectionBtn = document.getElementById('clear-selection-btn');
+        this.generateArticleBtn = document.getElementById('generate-article-btn');
         this.articlesGrid = document.getElementById('articles-grid');
         this.loadingState = document.getElementById('loading-state');
         this.errorState = document.getElementById('error-state');
@@ -14,7 +21,13 @@ class ArticlesManager {
         this.modal = document.getElementById('article-modal');
         this.modalTitle = document.getElementById('modal-title');
         this.modalContent = document.getElementById('modal-content');
+        this.generatedModal = document.getElementById('generated-article-modal');
+        this.generatedContent = document.getElementById('generated-content');
         this.currentTypeFilter = 'fotmob';
+        this.currentSearchQuery = '';
+        this.selectedArticles = new Set();
+        this.allArticles = [];
+        this.searchTimeout = null;
     }
 
     init() {
@@ -30,6 +43,39 @@ class ArticlesManager {
             });
         }
 
+        // Search input events
+        if (this.searchInput) {
+            this.searchInput.addEventListener('input', (e) => {
+                this.handleSearch(e.target.value);
+            });
+        }
+
+        // Clear search button
+        if (this.clearSearchBtn) {
+            this.clearSearchBtn.addEventListener('click', () => {
+                this.clearSearch();
+            });
+        }
+
+        // Selection buttons
+        if (this.selectAllBtn) {
+            this.selectAllBtn.addEventListener('click', () => {
+                this.selectAllArticles();
+            });
+        }
+
+        if (this.clearSelectionBtn) {
+            this.clearSelectionBtn.addEventListener('click', () => {
+                this.clearSelection();
+            });
+        }
+
+        if (this.generateArticleBtn) {
+            this.generateArticleBtn.addEventListener('click', () => {
+                this.generateArticle();
+            });
+        }
+
         // Modal close events
         if (this.modal) {
             this.modal.addEventListener('click', (e) => {
@@ -37,14 +83,26 @@ class ArticlesManager {
                     this.closeModal();
                 }
             });
+        }
 
-            // Close modal with Escape key
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && this.modal.classList.contains('show')) {
-                    this.closeModal();
+        if (this.generatedModal) {
+            this.generatedModal.addEventListener('click', (e) => {
+                if (e.target === this.generatedModal) {
+                    this.closeGeneratedModal();
                 }
             });
         }
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (this.modal.classList.contains('show')) {
+                    this.closeModal();
+                } else if (this.generatedModal.classList.contains('show')) {
+                    this.closeGeneratedModal();
+                }
+            }
+        });
     }
 
     async loadArticles() {
@@ -55,6 +113,9 @@ class ArticlesManager {
             if (this.currentTypeFilter !== 'all') {
                 url.searchParams.set('type', this.currentTypeFilter);
             }
+            if (this.currentSearchQuery) {
+                url.searchParams.set('search', this.currentSearchQuery);
+            }
             
             console.log('🔍 Loading articles from:', url.toString());
             
@@ -64,9 +125,11 @@ class ArticlesManager {
             console.log('📊 API Response:', data);
             
             if (data.success) {
+                this.allArticles = data.articles;
                 this.renderArticles(data.articles);
                 this.updateStats(data.total_count, data.selected_type);
                 this.updateTypeFilter(data.available_types);
+                this.updateSearchUI(data.search_query);
             } else {
                 this.showError(data.error || 'Failed to load articles');
             }
@@ -79,6 +142,32 @@ class ArticlesManager {
     filterByType(type) {
         this.currentTypeFilter = type;
         this.loadArticles();
+    }
+
+    handleSearch(query) {
+        // Clear previous timeout
+        if (this.searchTimeout) {
+            clearTimeout(this.searchTimeout);
+        }
+
+        // Set new timeout for debounced search
+        this.searchTimeout = setTimeout(() => {
+            this.currentSearchQuery = query;
+            this.loadArticles();
+        }, 300);
+    }
+
+    clearSearch() {
+        this.searchInput.value = '';
+        this.currentSearchQuery = '';
+        this.clearSearchBtn.style.display = 'none';
+        this.loadArticles();
+    }
+
+    updateSearchUI(searchQuery) {
+        if (this.clearSearchBtn) {
+            this.clearSearchBtn.style.display = searchQuery ? 'block' : 'none';
+        }
     }
 
     showLoading() {
@@ -114,10 +203,15 @@ class ArticlesManager {
             this.articlesGrid.innerHTML = articles.map(article => {
                 const articleType = article.source || article.type || 'unknown';
                 const typeDisplay = articleType.charAt(0).toUpperCase() + articleType.slice(1);
+                const isSelected = this.selectedArticles.has(article._id);
                 
                 return `
-                <article class="apple-card" data-article-id="${article._id}">
+                <article class="apple-card ${isSelected ? 'selected' : ''}" data-article-id="${article._id}">
                     <div class="card-header">
+                        <div class="card-selection">
+                            <input type="checkbox" class="article-checkbox" ${isSelected ? 'checked' : ''} 
+                                   onchange="window.articlesManager.toggleSelection('${article._id}')">
+                        </div>
                         <div class="card-type">
                             <span class="apple-badge apple-badge-${articleType}">${typeDisplay}</span>
                         </div>
@@ -154,6 +248,136 @@ class ArticlesManager {
         }
         if (this.currentType) {
             this.currentType.textContent = type === 'all' ? 'All Types' : type.charAt(0).toUpperCase() + type.slice(1);
+        }
+        this.updateSelectionUI();
+    }
+
+    updateSelectionUI() {
+        const selectedCount = this.selectedArticles.size;
+        if (this.selectedCount) {
+            this.selectedCount.textContent = `${selectedCount} selected`;
+        }
+        if (this.selectionActions) {
+            this.selectionActions.style.display = selectedCount > 0 ? 'flex' : 'none';
+        }
+        if (this.generateArticleBtn) {
+            this.generateArticleBtn.disabled = selectedCount === 0 || selectedCount > 3;
+        }
+    }
+
+    toggleSelection(articleId) {
+        if (this.selectedArticles.has(articleId)) {
+            this.selectedArticles.delete(articleId);
+        } else {
+            if (this.selectedArticles.size >= 3) {
+                this.showToast('warning', 'Selection Limit', 'You can select maximum 3 articles');
+                return;
+            }
+            this.selectedArticles.add(articleId);
+        }
+        this.updateSelectionUI();
+        this.updateCardSelection(articleId);
+    }
+
+    updateCardSelection(articleId) {
+        const card = document.querySelector(`[data-article-id="${articleId}"]`);
+        const checkbox = card?.querySelector('.article-checkbox');
+        if (card && checkbox) {
+            const isSelected = this.selectedArticles.has(articleId);
+            card.classList.toggle('selected', isSelected);
+            checkbox.checked = isSelected;
+        }
+    }
+
+    selectAllArticles() {
+        const maxSelect = Math.min(3, this.allArticles.length);
+        this.selectedArticles.clear();
+        for (let i = 0; i < maxSelect; i++) {
+            this.selectedArticles.add(this.allArticles[i]._id);
+        }
+        this.updateSelectionUI();
+        this.renderArticles(this.allArticles);
+    }
+
+    clearSelection() {
+        this.selectedArticles.clear();
+        this.updateSelectionUI();
+        this.renderArticles(this.allArticles);
+    }
+
+    async generateArticle() {
+        if (this.selectedArticles.size === 0) {
+            this.showToast('warning', 'No Selection', 'Please select at least one article');
+            return;
+        }
+
+        if (this.selectedArticles.size > 3) {
+            this.showToast('warning', 'Too Many Articles', 'Please select maximum 3 articles');
+            return;
+        }
+
+        try {
+            // Get selected articles content
+            const selectedArticlesData = this.allArticles.filter(article => 
+                this.selectedArticles.has(article._id)
+            );
+
+            const articlesContent = selectedArticlesData.map(article => 
+                article.content || article.summary || ''
+            );
+
+            // Show loading
+            this.generateArticleBtn.disabled = true;
+            this.generateArticleBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+
+            // Call API
+            const response = await fetch('/api/generate-article', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articles: articlesContent
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showGeneratedArticle(result.generated_article);
+                this.showToast('success', 'Article Generated', 'New article has been generated successfully!');
+            } else {
+                this.showToast('error', 'Generation Failed', result.error || 'Failed to generate article');
+            }
+
+        } catch (error) {
+            console.error('Error generating article:', error);
+            this.showToast('error', 'Network Error', 'Failed to generate article: ' + error.message);
+        } finally {
+            this.generateArticleBtn.disabled = false;
+            this.generateArticleBtn.innerHTML = '<i class="fas fa-magic"></i> <span>Generate Article</span>';
+        }
+    }
+
+    showGeneratedArticle(content) {
+        if (this.generatedContent) {
+            // Split content by paragraphs and render
+            const paragraphs = content.split('\n').filter(p => p.trim());
+            this.generatedContent.innerHTML = paragraphs.map(paragraph => 
+                `<p class="generated-paragraph">${paragraph.trim()}</p>`
+            ).join('');
+        }
+        
+        if (this.generatedModal) {
+            this.generatedModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    closeGeneratedModal() {
+        if (this.generatedModal) {
+            this.generatedModal.classList.remove('show');
+            document.body.style.overflow = '';
         }
     }
 
@@ -292,6 +516,12 @@ function viewArticle(articleId) {
 function closeModal() {
     if (window.articlesManager) {
         window.articlesManager.closeModal();
+    }
+}
+
+function closeGeneratedModal() {
+    if (window.articlesManager) {
+        window.articlesManager.closeGeneratedModal();
     }
 }
 

@@ -18,27 +18,50 @@
                 <div class="nav-left">
                     <h1 class="nav-title">Articles</h1>
                 </div>
-                <div class="nav-right">
-                    <div class="nav-filter">
-                        <select id="type-filter" class="apple-select">
-                            <option value="all">All Types</option>
-                            {% for type in available_types %}
-                            <option value="{{ type }}" {% if type == selected_type %}selected{% endif %}>{{ type|title }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
+                   <div class="nav-right">
+                       <div class="nav-search">
+                           <div class="search-container">
+                               <i class="fas fa-search search-icon"></i>
+                               <input type="text" id="search-input" class="apple-search" placeholder="Search articles...">
+                               <button id="clear-search" class="clear-search" style="display: none;">
+                                   <i class="fas fa-times"></i>
+                               </button>
+                           </div>
+                       </div>
+                       <div class="nav-filter">
+                           <select id="type-filter" class="apple-select">
+                               <option value="all">All Types</option>
+                               {% for type in available_types %}
+                               <option value="{{ type }}" {% if type == selected_type %}selected{% endif %}>{{ type|title }}</option>
+                               {% endfor %}
+                           </select>
+                       </div>
+                   </div>
             </div>
         </nav>
 
         <!-- Apple-style Stats Bar -->
-        <div class="apple-stats">
-            <div class="stats-content">
-                <span class="stats-count" id="articles-count">Loading...</span>
-                <span class="stats-separator">•</span>
-                <span class="stats-type" id="current-type">All Types</span>
-            </div>
-        </div>
+           <div class="apple-stats">
+               <div class="stats-content">
+                   <span class="stats-count" id="articles-count">Loading...</span>
+                   <span class="stats-separator">•</span>
+                   <span class="stats-type" id="current-type">All Types</span>
+                   <span class="stats-separator">•</span>
+                   <span class="stats-selected" id="selected-count">0 selected</span>
+               </div>
+               <div class="stats-actions" id="selection-actions" style="display: none;">
+                   <button id="select-all-btn" class="apple-button apple-button-secondary">
+                       <span>Select All</span>
+                   </button>
+                   <button id="clear-selection-btn" class="apple-button apple-button-secondary">
+                       <span>Clear Selection</span>
+                   </button>
+                   <button id="generate-article-btn" class="apple-button apple-button-primary">
+                       <i class="fas fa-magic"></i>
+                       <span>Generate Article</span>
+                   </button>
+               </div>
+           </div>
 
         <!-- Apple-style Content Area -->
         <main class="apple-content">
@@ -78,22 +101,40 @@
     </div>
 
     <!-- Apple-style Modal -->
-    <div id="article-modal" class="apple-modal">
-        <div class="modal-backdrop" onclick="closeModal()"></div>
-        <div class="modal-dialog">
-            <div class="modal-header">
-                <h2 id="modal-title" class="modal-title">Article Details</h2>
-                <button class="modal-close" onclick="closeModal()">
-                    <i class="fas fa-xmark"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div id="modal-content">
-                    <!-- Article details will be loaded here -->
-                </div>
-            </div>
-        </div>
-    </div>
+       <div id="article-modal" class="apple-modal">
+           <div class="modal-backdrop" onclick="closeModal()"></div>
+           <div class="modal-dialog">
+               <div class="modal-header">
+                   <h2 id="modal-title" class="modal-title">Article Details</h2>
+                   <button class="modal-close" onclick="closeModal()">
+                       <i class="fas fa-xmark"></i>
+                   </button>
+               </div>
+               <div class="modal-body">
+                   <div id="modal-content">
+                       <!-- Article details will be loaded here -->
+                   </div>
+               </div>
+           </div>
+       </div>
+
+       <!-- Generated Article Modal -->
+       <div id="generated-article-modal" class="apple-modal">
+           <div class="modal-backdrop" onclick="closeGeneratedModal()"></div>
+           <div class="modal-dialog modal-large">
+               <div class="modal-header">
+                   <h2 class="modal-title">Generated Article</h2>
+                   <button class="modal-close" onclick="closeGeneratedModal()">
+                       <i class="fas fa-xmark"></i>
+                   </button>
+               </div>
+               <div class="modal-body">
+                   <div id="generated-content">
+                       <!-- Generated article will be loaded here -->
+                   </div>
+               </div>
+           </div>
+       </div>
 
     <script src="{{ url_for('static', filename='js/articles.js') }}"></script>
     <script>
