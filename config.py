@@ -11,7 +11,7 @@ class Config:
     PORT = int(os.getenv('PORT', 5001))
     
     # MongoDB Configuration
-    MONGO_URI = os.getenv('MONGO_URI', 'mongodb://admin:password123@localhost:27017/playfantasy365?authSource=admin')
+    MONGO_URI = os.getenv('MONGO_URI', 'mongodb://admin:password123@37.27.200.28:27019/playfantasy365?authSource=admin')
     
     # YouTube API Configuration
     YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY', 'AIzaSyBfvol09E1FSgzoDQgf0c4r5oNj8PC4buY')
