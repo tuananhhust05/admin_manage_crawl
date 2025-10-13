@@ -2344,3 +2344,173 @@ def cleanup_video_data():
             'success': False,
             'error': f'Cleanup failed: {str(e)}'
         }), 500
+
+# ==============================================================================
+# REQUESTS COLLECTION API
+# ==============================================================================
+
+@main.route('/api/requests', methods=['POST'])
+def save_request():
+    """
+    API nhận POST raw JSON và lưu vào collection requests
+    """
+    try:
+        # Lấy raw JSON data từ request
+        raw_data = request.get_json()
+        
+        if not raw_data:
+            return jsonify({
+                'success': False,
+                'error': 'No JSON data provided'
+            }), 400
+        
+        mongo = get_mongo()
+        
+        # Tạo document để lưu vào collection requests
+        request_doc = {
+            'data': raw_data,  # Lưu toàn bộ JSON data
+            'created_at': datetime.utcnow(),
+            'updated_at': datetime.utcnow(),
+            'ip_address': request.remote_addr,
+            'user_agent': request.headers.get('User-Agent', ''),
+            'content_type': request.content_type,
+            'content_length': request.content_length
+        }
+        
+        # Thêm các field metadata nếu có
+        if 'timestamp' in raw_data:
+            request_doc['client_timestamp'] = raw_data.get('timestamp')
+        
+        if 'source' in raw_data:
+            request_doc['source'] = raw_data.get('source')
+        
+        if 'type' in raw_data:
+            request_doc['request_type'] = raw_data.get('type')
+        
+        # Lưu vào MongoDB
+        result = mongo.db.requests.insert_one(request_doc)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Request saved successfully',
+            'request_id': str(result.inserted_id),
+            'created_at': request_doc['created_at'].isoformat()
+        }), 201
+        
+    except Exception as e:
+        log_exception("save_request", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/requests', methods=['GET'])
+def get_requests():
+    """
+    API lấy danh sách requests từ collection requests
+    """
+    try:
+        mongo = get_mongo()
+        
+        # Lấy parameters từ query
+        limit = int(request.args.get('limit', 50))
+        skip = int(request.args.get('skip', 0))
+        source = request.args.get('source')
+        request_type = request.args.get('type')
+        
+        # Build query
+        query = {}
+        if source:
+            query['source'] = source
+        if request_type:
+            query['request_type'] = request_type
+        
+        # Query requests, sorted by newest first
+        requests = list(mongo.db.requests.find(query)
+                       .sort('created_at', -1)
+                       .skip(skip)
+                       .limit(limit))
+        
+        # Convert ObjectId to string for JSON serialization
+        for req in requests:
+            req['_id'] = str(req['_id'])
+            if 'created_at' in req:
+                req['created_at'] = req['created_at'].isoformat() if hasattr(req['created_at'], 'isoformat') else str(req['created_at'])
+            if 'updated_at' in req:
+                req['updated_at'] = req['updated_at'].isoformat() if hasattr(req['updated_at'], 'isoformat') else str(req['updated_at'])
+        
+        # Get total count
+        total_count = mongo.db.requests.count_documents(query)
+        
+        return jsonify({
+            'success': True,
+            'requests': requests,
+            'total_count': total_count,
+            'limit': limit,
+            'skip': skip
+        }), 200
+        
+    except Exception as e:
+        log_exception("get_requests", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/requests/<request_id>', methods=['GET'])
+def get_request(request_id):
+    """
+    API lấy chi tiết một request cụ thể
+    """
+    try:
+        mongo = get_mongo()
+        
+        request_doc = mongo.db.requests.find_one({'_id': ObjectId(request_id)})
+        if not request_doc:
+            return jsonify({
+                'success': False,
+                'error': 'Request not found'
+            }), 404
+        
+        # Convert ObjectId to string for JSON serialization
+        request_doc = serialize_document(request_doc)
+        
+        return jsonify({
+            'success': True,
+            'request': request_doc
+        }), 200
+        
+    except Exception as e:
+        log_exception("get_request", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/requests/<request_id>', methods=['DELETE'])
+def delete_request(request_id):
+    """
+    API xóa một request cụ thể
+    """
+    try:
+        mongo = get_mongo()
+        
+        result = mongo.db.requests.delete_one({'_id': ObjectId(request_id)})
+        
+        if result.deleted_count == 0:
+            return jsonify({
+                'success': False,
+                'error': 'Request not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'message': 'Request deleted successfully'
+        }), 200
+        
+    except Exception as e:
+        log_exception("delete_request", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
