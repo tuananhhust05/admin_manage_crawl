@@ -2353,6 +2353,7 @@ def cleanup_video_data():
 def save_request():
     """
     API nhận POST raw JSON và lưu vào collection requests
+    Chỉ lưu JSON body, không lưu metadata khác
     """
     try:
         # Lấy raw JSON data từ request
@@ -2367,25 +2368,11 @@ def save_request():
         mongo = get_mongo()
         
         # Tạo document để lưu vào collection requests
+        # Chỉ lưu JSON body + timestamp
         request_doc = {
-            'data': raw_data,  # Lưu toàn bộ JSON data
-            'created_at': datetime.utcnow(),
-            'updated_at': datetime.utcnow(),
-            'ip_address': request.remote_addr,
-            'user_agent': request.headers.get('User-Agent', ''),
-            'content_type': request.content_type,
-            'content_length': request.content_length
+            **raw_data,  # Lưu toàn bộ JSON data trực tiếp
+            'created_at': datetime.utcnow()
         }
-        
-        # Thêm các field metadata nếu có
-        if 'timestamp' in raw_data:
-            request_doc['client_timestamp'] = raw_data.get('timestamp')
-        
-        if 'source' in raw_data:
-            request_doc['source'] = raw_data.get('source')
-        
-        if 'type' in raw_data:
-            request_doc['request_type'] = raw_data.get('type')
         
         # Lưu vào MongoDB
         result = mongo.db.requests.insert_one(request_doc)
@@ -2415,15 +2402,12 @@ def get_requests():
         # Lấy parameters từ query
         limit = int(request.args.get('limit', 50))
         skip = int(request.args.get('skip', 0))
-        source = request.args.get('source')
-        request_type = request.args.get('type')
         
-        # Build query
+        # Build query - có thể filter theo bất kỳ field nào trong JSON body
         query = {}
-        if source:
-            query['source'] = source
-        if request_type:
-            query['request_type'] = request_type
+        for key, value in request.args.items():
+            if key not in ['limit', 'skip']:
+                query[key] = value
         
         # Query requests, sorted by newest first
         requests = list(mongo.db.requests.find(query)
@@ -2436,8 +2420,6 @@ def get_requests():
             req['_id'] = str(req['_id'])
             if 'created_at' in req:
                 req['created_at'] = req['created_at'].isoformat() if hasattr(req['created_at'], 'isoformat') else str(req['created_at'])
-            if 'updated_at' in req:
-                req['updated_at'] = req['updated_at'].isoformat() if hasattr(req['updated_at'], 'isoformat') else str(req['updated_at'])
         
         # Get total count
         total_count = mongo.db.requests.count_documents(query)
