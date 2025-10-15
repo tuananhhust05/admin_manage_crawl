@@ -2511,22 +2511,50 @@ def save_request():
     Body: JSON data
     """
     try:
-        # Check secret key first
-        secret_key = request.args.get('secret_key') or request.headers.get('X-Secret-Key')
-        expected_secret = os.getenv('SECRET_KEY')
+        # Check secret key first (supports query param, header aliases, trims, and config/env)
+        provided_secret = (
+            request.args.get('secret_key')
+            or request.args.get('SECRET_KEY')
+            or request.headers.get('X-Secret-Key')
+            or request.headers.get('X-SECRET-KEY')
+        )
+        provided_secret = (provided_secret or '').strip()
+
+        # Prefer Flask config, fallback to env
+        expected_secret = (current_app.config.get('SECRET_KEY') or os.getenv('SECRET_KEY') or '').strip()
         
+        # Debug logging for key sources
+        logging.info(f"Secret key sources debug:")
+        logging.info(f"  - Query param 'secret_key': {bool(request.args.get('secret_key'))}")
+        logging.info(f"  - Query param 'SECRET_KEY': {bool(request.args.get('SECRET_KEY'))}")
+        logging.info(f"  - Header 'X-Secret-Key': {bool(request.headers.get('X-Secret-Key'))}")
+        logging.info(f"  - Header 'X-SECRET-KEY': {bool(request.headers.get('X-SECRET-KEY'))}")
+        logging.info(f"  - Flask config SECRET_KEY: {bool(current_app.config.get('SECRET_KEY'))}")
+        logging.info(f"  - Env SECRET_KEY: {bool(os.getenv('SECRET_KEY'))}")
+
         if not expected_secret:
-            logging.error("SECRET_KEY not configured in environment variables")
+            logging.error("SECRET_KEY not configured (missing in app config and env)")
             return jsonify({'success': False, 'error': 'Server configuration error'}), 500
-            
-        if not secret_key:
-            logging.warning("API request missing secret key")
+
+        if not provided_secret:
+            logging.warning("API request missing secret key (no query/header provided)")
             return jsonify({'success': False, 'error': 'Secret key required'}), 401
-            
-        if secret_key != expected_secret:
-            logging.warning(f"Invalid secret key provided: {secret_key[:8]}...")
+
+        # Log partial keys for debugging (first 4 chars + last 4 chars for security)
+        def mask_key(key):
+            if len(key) <= 8:
+                return "*" * len(key)
+            return f"{key[:4]}...{key[-4:]}"
+        
+        logging.info(f"Secret key debug:")
+        logging.info(f"  - Provided: '{mask_key(provided_secret)}' (len={len(provided_secret)})")
+        logging.info(f"  - Expected: '{mask_key(expected_secret)}' (len={len(expected_secret)})")
+        logging.info(f"  - Match: {provided_secret == expected_secret}")
+
+        if provided_secret != expected_secret:
+            logging.warning("Invalid secret key provided (mismatch)")
             return jsonify({'success': False, 'error': 'Invalid secret key'}), 401
-            
+
         logging.info("Secret key validation successful")
         
         # Lấy raw JSON data từ request
