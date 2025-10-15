@@ -21,3 +21,4 @@ elasticsearch==8.11.0
 elasticsearch-dsl==8.11.0
 uuid==1.30
 huggingface_hub
+groq==0.4.1

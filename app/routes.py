@@ -10,13 +10,113 @@ import uuid
 import logging
 from typing import List, Dict, Any
 import traceback
+import time
 # Import Elasticsearch service
 from elasticsearch_service import elasticsearch_service
+
+# Import Groq for article generation
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    logging.warning("Groq library not available. Article generation will be disabled.")
 
 main = Blueprint('main', __name__)
 
 def get_mongo():
     return PyMongo(current_app)
+
+# Groq API helper functions
+def get_groq_client():
+    """Initialize Groq client with API key from environment"""
+    if not GROQ_AVAILABLE:
+        raise Exception("Groq library not available")
+    
+    groq_key = os.getenv('GROQ_KEY')
+    if not groq_key:
+        raise Exception("GROQ_KEY not found in environment variables")
+    
+    return Groq(api_key=groq_key)
+
+def estimate_tokens(text: str) -> int:
+    """Estimate tokens from text based on number of words."""
+    TOKEN_RATIO = 0.75  # Approximate ratio between tokens and words
+    return int(len(text.split()) / TOKEN_RATIO)
+
+def truncate_articles(articles, max_input_tokens=5000):
+    """Truncate combined articles to ensure input tokens <= max_input_tokens."""
+    TOKEN_RATIO = 0.75
+    words = []
+    for article in articles:
+        words.extend(article.split())
+
+    max_words = int(max_input_tokens * TOKEN_RATIO)
+    if len(words) <= max_words:
+        return articles
+
+    truncated_words = words[:max_words]
+    truncated_text = " ".join(truncated_words)
+    mid = len(truncated_text) // 2
+    return [truncated_text[:mid], truncated_text[mid:]]
+
+def extract_final_think_output(text: str) -> str:
+    """
+    Split by <think> and return the last segment (content after the final <think> tag).
+    """
+    parts = text.split("<think>")
+    last_part = parts[-1]
+    # Remove closing tag if exists
+    if "</think>" in last_part:
+        last_part = last_part.split("</think>")[-1]
+    return last_part.strip()
+
+def generate_article_with_groq(articles_data):
+    """Generate article using Groq API"""
+    try:
+        client = get_groq_client()
+        
+        # Token constants
+        MAX_OUTPUT_TOKENS = 3000
+        MAX_INPUT_TOKENS = 5000
+        
+        # Estimate token usage
+        estimated_input_tokens = estimate_tokens("\n---\n".join(articles_data))
+        if estimated_input_tokens > MAX_INPUT_TOKENS:
+            articles_data = truncate_articles(articles_data, MAX_INPUT_TOKENS)
+
+        # Combine all articles
+        combined_articles = "\n---\n".join(articles_data)
+
+        # Prompt construction
+        prompt = (
+            "Using ONLY the information from the provided source articles, write a single, coherent, well-structured article in English. "
+            "Do NOT include any reasoning, explanations, or thoughts. "
+            "Do NOT add any information beyond the sources. "
+            "Return ONLY the article text.\n\n"
+            f"Source Articles:\n{combined_articles}"
+        )
+
+        response = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="groq/compound",
+            max_tokens=MAX_OUTPUT_TOKENS,
+        )
+
+        generated_text = response.choices[0].message.content.strip()
+        final_output = extract_final_think_output(generated_text)
+        
+        return {
+            'success': True,
+            'article': final_output
+        }
+        
+    except Exception as e:
+        logging.error(f"Groq API error: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
 def log_exception(function_name: str, error: Exception):
     """
@@ -2354,6 +2454,7 @@ def save_request():
     """
     API nhận POST raw JSON và lưu vào collection requests
     Chỉ lưu JSON body, không lưu metadata khác
+    Xử lý đặc biệt cho type: "event_match_end"
     """
     try:
         # Lấy raw JSON data từ request
@@ -2377,11 +2478,81 @@ def save_request():
         # Lưu vào MongoDB
         result = mongo.db.requests.insert_one(request_doc)
         
+        # Xử lý đặc biệt cho event_match_end
+        if raw_data.get('type') == 'event_match_end':
+            try:
+                fixture_id = raw_data.get('fixture_id')
+                if not fixture_id:
+                    logging.warning("event_match_end request missing fixture_id")
+                else:
+                    # Query tất cả requests có cùng fixture_id
+                    related_requests = list(mongo.db.requests.find({
+                        'fixture_id': fixture_id,
+                        'type': {'$ne': 'event_match_end'}  # Loại trừ chính request này
+                    }))
+                    
+                    if related_requests:
+                        # Lấy nội dung từ các requests liên quan
+                        articles_data = []
+                        for req in related_requests:
+                            # Lấy nội dung từ các field có thể có
+                            content = (req.get('content') or 
+                                     req.get('data', {}).get('content') or 
+                                     req.get('message') or 
+                                     str(req.get('data', {})))
+                            if content and content.strip():
+                                articles_data.append(content.strip())
+                        
+                        if articles_data:
+                            logging.info(f"Generating article for fixture_id: {fixture_id} with {len(articles_data)} sources")
+                            
+                            # Generate article using Groq
+                            groq_result = generate_article_with_groq(articles_data)
+                            
+                            if groq_result['success']:
+                                # Lưu bài báo đã generate vào collection generated_articles
+                                generated_article_doc = {
+                                    'fixture_id': fixture_id,
+                                    'title': f"Match Report - Fixture {fixture_id}",
+                                    'content': groq_result['article'],
+                                    'source_requests_count': len(related_requests),
+                                    'generated_at': datetime.utcnow(),
+                                    'created_at': datetime.utcnow()
+                                }
+                                
+                                article_result = mongo.db.generated_articles.insert_one(generated_article_doc)
+                                
+                                logging.info(f"Generated article saved with ID: {article_result.inserted_id}")
+                                
+                                # Thêm thông tin vào response
+                                request_doc['generated_article_id'] = str(article_result.inserted_id)
+                                request_doc['article_generated'] = True
+                            else:
+                                logging.error(f"Failed to generate article: {groq_result.get('error')}")
+                                request_doc['article_generated'] = False
+                                request_doc['generation_error'] = groq_result.get('error')
+                        else:
+                            logging.warning(f"No content found in related requests for fixture_id: {fixture_id}")
+                            request_doc['article_generated'] = False
+                            request_doc['generation_error'] = 'No content found in related requests'
+                    else:
+                        logging.warning(f"No related requests found for fixture_id: {fixture_id}")
+                        request_doc['article_generated'] = False
+                        request_doc['generation_error'] = 'No related requests found'
+                        
+            except Exception as e:
+                logging.error(f"Error processing event_match_end: {str(e)}")
+                request_doc['article_generated'] = False
+                request_doc['generation_error'] = str(e)
+        
         return jsonify({
             'success': True,
             'message': 'Request saved successfully',
             'request_id': str(result.inserted_id),
-            'created_at': request_doc['created_at'].isoformat()
+            'created_at': request_doc['created_at'].isoformat(),
+            'article_generated': request_doc.get('article_generated', False),
+            'generated_article_id': request_doc.get('generated_article_id'),
+            'generation_error': request_doc.get('generation_error')
         }), 201
         
     except Exception as e:
@@ -2492,6 +2663,90 @@ def delete_request(request_id):
         
     except Exception as e:
         log_exception("delete_request", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ==============================================================================
+# GENERATED ARTICLES API
+# ==============================================================================
+
+@main.route('/api/generated-articles', methods=['GET'])
+def get_generated_articles():
+    """
+    API lấy danh sách generated articles
+    """
+    try:
+        mongo = get_mongo()
+        
+        # Lấy parameters từ query
+        limit = int(request.args.get('limit', 50))
+        skip = int(request.args.get('skip', 0))
+        fixture_id = request.args.get('fixture_id')
+        
+        # Build query
+        query = {}
+        if fixture_id:
+            query['fixture_id'] = fixture_id
+        
+        # Query generated articles, sorted by newest first
+        articles = list(mongo.db.generated_articles.find(query)
+                       .sort('generated_at', -1)
+                       .skip(skip)
+                       .limit(limit))
+        
+        # Convert ObjectId to string for JSON serialization
+        for article in articles:
+            article['_id'] = str(article['_id'])
+            if 'generated_at' in article:
+                article['generated_at'] = article['generated_at'].isoformat() if hasattr(article['generated_at'], 'isoformat') else str(article['generated_at'])
+            if 'created_at' in article:
+                article['created_at'] = article['created_at'].isoformat() if hasattr(article['created_at'], 'isoformat') else str(article['created_at'])
+        
+        # Get total count
+        total_count = mongo.db.generated_articles.count_documents(query)
+        
+        return jsonify({
+            'success': True,
+            'articles': articles,
+            'total_count': total_count,
+            'limit': limit,
+            'skip': skip
+        }), 200
+        
+    except Exception as e:
+        log_exception("get_generated_articles", e)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@main.route('/api/generated-articles/<article_id>', methods=['GET'])
+def get_generated_article(article_id):
+    """
+    API lấy chi tiết một generated article
+    """
+    try:
+        mongo = get_mongo()
+        
+        article = mongo.db.generated_articles.find_one({'_id': ObjectId(article_id)})
+        if not article:
+            return jsonify({
+                'success': False,
+                'error': 'Generated article not found'
+            }), 404
+        
+        # Convert ObjectId to string for JSON serialization
+        article = serialize_document(article)
+        
+        return jsonify({
+            'success': True,
+            'article': article
+        }), 200
+        
+    except Exception as e:
+        log_exception("get_generated_article", e)
         return jsonify({
             'success': False,
             'error': str(e)

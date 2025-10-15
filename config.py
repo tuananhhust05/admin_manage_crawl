@@ -29,3 +29,6 @@ class Config:
     
     # Sentence Transformer Model Configuration
     SENTENCE_TRANSFORMER_MODEL = os.getenv('SENTENCE_TRANSFORMER_MODEL', 'all-MiniLM-L6-v2')
+    
+    # Groq API Configuration
+    GROQ_KEY = os.getenv('GROQ_KEY', '')
