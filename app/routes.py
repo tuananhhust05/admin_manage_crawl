@@ -80,13 +80,34 @@ def generate_article_with_groq(articles_data):
         MAX_OUTPUT_TOKENS = 3000
         MAX_INPUT_TOKENS = 5000
         
+        # Đảm bảo tất cả dữ liệu đều là string
+        string_articles = []
+        for article in articles_data:
+            if isinstance(article, dict):
+                string_articles.append(json.dumps(article, ensure_ascii=False, indent=2))
+            else:
+                string_articles.append(str(article))
+        
         # Estimate token usage
-        estimated_input_tokens = estimate_tokens("\n---\n".join(articles_data))
+        combined_text = "\n---\n".join(string_articles)
+        estimated_input_tokens = estimate_tokens(combined_text)
+        
         if estimated_input_tokens > MAX_INPUT_TOKENS:
-            articles_data = truncate_articles(articles_data, MAX_INPUT_TOKENS)
+            string_articles = truncate_articles(string_articles, MAX_INPUT_TOKENS)
 
         # Combine all articles
-        combined_articles = "\n---\n".join(articles_data)
+        combined_articles = "\n---\n".join(string_articles)
+        
+        logging.info(f"Combined articles length: {len(combined_articles)} characters")
+        logging.info(f"Estimated tokens: {estimate_tokens(combined_articles)}")
+        
+        # Log input data for debugging
+        logging.info("=" * 80)
+        logging.info("GROQ API INPUT DEBUG:")
+        logging.info(f"Number of articles: {len(string_articles)}")
+        for i, article in enumerate(string_articles):
+            logging.info(f"Article {i+1} (first 200 chars): {article[:200]}...")
+        logging.info("=" * 80)
 
         # Prompt construction
         prompt = (
@@ -96,6 +117,13 @@ def generate_article_with_groq(articles_data):
             "Return ONLY the article text.\n\n"
             f"Source Articles:\n{combined_articles}"
         )
+        
+        # Log full prompt for debugging
+        logging.info("=" * 80)
+        logging.info("GROQ API PROMPT DEBUG:")
+        logging.info(f"Prompt length: {len(prompt)} characters")
+        logging.info(f"Full prompt:\n{prompt}")
+        logging.info("=" * 80)
 
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
@@ -105,6 +133,15 @@ def generate_article_with_groq(articles_data):
 
         generated_text = response.choices[0].message.content.strip()
         final_output = extract_final_think_output(generated_text)
+        
+        # Log response for debugging
+        logging.info("=" * 80)
+        logging.info("GROQ API RESPONSE DEBUG:")
+        logging.info(f"Raw response length: {len(generated_text)} characters")
+        logging.info(f"Raw response (first 500 chars): {generated_text[:500]}...")
+        logging.info(f"Final output length: {len(final_output)} characters")
+        logging.info(f"Final output (first 500 chars): {final_output[:500]}...")
+        logging.info("=" * 80)
         
         return {
             'success': True,
@@ -2491,17 +2528,36 @@ def save_request():
                         'type': {'$ne': 'event_match_end'}  # Loại trừ chính request này
                     }))
                     
+                    logging.info(f"Found {len(related_requests)} related requests for fixture_id: {fixture_id}")
+                    
                     if related_requests:
                         # Lấy nội dung từ các requests liên quan
                         articles_data = []
                         for req in related_requests:
-                            # Lấy nội dung từ các field có thể có
-                            content = (req.get('content') or 
-                                     req.get('data', {}).get('content') or 
-                                     req.get('message') or 
-                                     str(req.get('data', {})))
+                            # Lấy nội dung từ các field có thể có và stringify
+                            content = None
+                            
+                            # Thử lấy từ các field text trực tiếp
+                            if req.get('content'):
+                                content = str(req.get('content'))
+                            elif req.get('message'):
+                                content = str(req.get('message'))
+                            elif req.get('data'):
+                                # Nếu data là dict, stringify nó
+                                if isinstance(req.get('data'), dict):
+                                    content = json.dumps(req.get('data'), ensure_ascii=False, indent=2)
+                                else:
+                                    content = str(req.get('data'))
+                            else:
+                                # Stringify toàn bộ request (loại bỏ _id và created_at)
+                                req_copy = {k: v for k, v in req.items() if k not in ['_id', 'created_at']}
+                                content = json.dumps(req_copy, ensure_ascii=False, indent=2)
+                            
                             if content and content.strip():
                                 articles_data.append(content.strip())
+                                logging.info(f"Added content from request {req.get('_id')}: {content[:100]}...")
+                        
+                        logging.info(f"Total articles data collected: {len(articles_data)}")
                         
                         if articles_data:
                             logging.info(f"Generating article for fixture_id: {fixture_id} with {len(articles_data)} sources")
