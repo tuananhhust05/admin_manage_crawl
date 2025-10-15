@@ -2956,12 +2956,17 @@ body {
     background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     z-index: 1000;
     padding: 20px;
-    animation: modalFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal.modal-show {
+    opacity: 1;
 }
 
 @keyframes modalFadeIn {
@@ -2991,7 +2996,12 @@ body {
         0 20px 60px rgba(0, 0, 0, 0.2),
         0 8px 24px rgba(0, 0, 0, 0.1),
         inset 0 1px 0 rgba(255, 255, 255, 0.3);
-    animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateY(20px) scale(0.95);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal.modal-show .modal-content {
+    transform: translateY(0) scale(1);
 }
 
 @keyframes modalSlideIn {
@@ -3223,6 +3233,17 @@ body {
         transform: translateX(0) scale(1);
         opacity: 1;
     }
+}
+
+/* Modal Fixes */
+.modal {
+    pointer-events: auto;
+}
+
+.modal-content {
+    pointer-events: auto;
+    position: relative;
+    z-index: 1001;
 }
 
 /* Responsive Design */

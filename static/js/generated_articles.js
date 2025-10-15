@@ -79,6 +79,21 @@ class GeneratedArticlesManager {
             }
         });
         
+        // Prevent modal from closing when clicking inside modal content
+        const modalContent = this.articleModal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        }
+        
+        // Close modal with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.articleModal.style.display === 'flex') {
+                this.closeModal();
+            }
+        });
+        
         // Retry button
         this.retryBtn.addEventListener('click', () => this.loadArticles());
     }
@@ -234,7 +249,7 @@ class GeneratedArticlesManager {
             </td>
             <td class="actions">
                 <button class="btn btn-primary btn-sm view-btn" data-article-id="${article._id}">
-                    <i class="fas fa-eye"></i> View
+                    <i class="bi bi-eye"></i> View
                 </button>
             </td>
         `;
@@ -262,9 +277,14 @@ class GeneratedArticlesManager {
                 this.modalArticleContent.innerHTML = '<p class="no-content">No content available</p>';
             }
             
-            // Show modal
+            // Show modal with animation
             this.articleModal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
+            
+            // Add a small delay to ensure modal is visible
+            setTimeout(() => {
+                this.articleModal.classList.add('modal-show');
+            }, 10);
             
         } catch (error) {
             console.error('Error showing article modal:', error);
@@ -282,8 +302,14 @@ class GeneratedArticlesManager {
     }
     
     closeModal() {
-        this.articleModal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        // Remove show class first
+        this.articleModal.classList.remove('modal-show');
+        
+        // Wait for animation to complete before hiding
+        setTimeout(() => {
+            this.articleModal.style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }, 300);
     }
     
     async copyArticle() {
