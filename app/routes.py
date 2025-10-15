@@ -14,7 +14,7 @@ import time
 # Import Elasticsearch service
 from elasticsearch_service import elasticsearch_service
 
-# Import Groq for article generation
+# Import Groq for article  generation
 try:
     from groq import Groq
     GROQ_AVAILABLE = True
