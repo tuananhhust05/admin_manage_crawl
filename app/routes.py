@@ -2496,10 +2496,39 @@ def cleanup_video_data():
 def save_request():
     """
     API nhận POST raw JSON và lưu vào collection requests
-    Chỉ lưu JSON body, không lưu metadata khác
-    Xử lý đặc biệt cho type: "event_match_end"
+    
+    Yêu cầu:
+    - Secret key phải được truyền qua param 'secret_key' hoặc header 'X-Secret-Key'
+    - JSON body chứa dữ liệu cần lưu
+    
+    Xử lý đặc biệt cho type: "event_match_end" - tự động generate article
+    
+    Cách sử dụng:
+    POST /api/requests?secret_key=your_secret_key
+    hoặc
+    POST /api/requests
+    Header: X-Secret-Key: your_secret_key
+    Body: JSON data
     """
     try:
+        # Check secret key first
+        secret_key = request.args.get('secret_key') or request.headers.get('X-Secret-Key')
+        expected_secret = os.getenv('SECRET_KEY')
+        
+        if not expected_secret:
+            logging.error("SECRET_KEY not configured in environment variables")
+            return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+            
+        if not secret_key:
+            logging.warning("API request missing secret key")
+            return jsonify({'success': False, 'error': 'Secret key required'}), 401
+            
+        if secret_key != expected_secret:
+            logging.warning(f"Invalid secret key provided: {secret_key[:8]}...")
+            return jsonify({'success': False, 'error': 'Invalid secret key'}), 401
+            
+        logging.info("Secret key validation successful")
+        
         # Lấy raw JSON data từ request
         raw_data = request.get_json()
         
