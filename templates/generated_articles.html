@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generated Articles Statistics - PlayFantasy365</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="header-title">
+                    <i class="fas fa-newspaper"></i>
+                    Generated Articles Statistics
+                </h1>
+                <p class="header-subtitle">AI-generated match reports and articles</p>
+            </div>
+        </header>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-number" id="total-articles">-</div>
+                    <div class="stat-label">Total Articles</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon">
+                    <i class="fas fa-calendar-day"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-number" id="today-articles">-</div>
+                    <div class="stat-label">Today</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon">
+                    <i class="fas fa-futbol"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-number" id="unique-fixtures">-</div>
+                    <div class="stat-label">Unique Fixtures</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-number" id="avg-sources">-</div>
+                    <div class="stat-label">Avg Sources</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-section">
+            <div class="filter-group">
+                <label for="fixture-filter">Filter by Fixture ID:</label>
+                <input type="text" id="fixture-filter" placeholder="Enter fixture ID..." class="filter-input">
+            </div>
+            <div class="filter-group">
+                <label for="date-filter">Filter by Date:</label>
+                <input type="date" id="date-filter" class="filter-input">
+            </div>
+            <div class="filter-actions">
+                <button id="clear-filters" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Clear Filters
+                </button>
+                <button id="refresh-data" class="btn btn-primary">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="loading-state">
+            <div class="loading-spinner"></div>
+            <p>Loading generated articles...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="error-state" style="display: none;">
+            <div class="error-icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h3>Error Loading Data</h3>
+            <p id="error-message">Something went wrong while loading the articles.</p>
+            <button id="retry-btn" class="btn btn-primary">
+                <i class="fas fa-redo"></i> Try Again
+            </button>
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="empty-state" style="display: none;">
+            <div class="empty-icon">
+                <i class="fas fa-newspaper"></i>
+            </div>
+            <h3>No Generated Articles</h3>
+            <p>No articles have been generated yet. Articles will appear here after match events are processed.</p>
+        </div>
+
+        <!-- Articles Table -->
+        <div id="articles-container" class="articles-container" style="display: none;">
+            <div class="table-container">
+                <table class="articles-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Fixture ID</th>
+                            <th>Sources</th>
+                            <th>Generated</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="articles-table-body">
+                        <!-- Articles will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination-container">
+                <div class="pagination-info">
+                    <span id="pagination-info">Showing 0-0 of 0 articles</span>
+                </div>
+                <div class="pagination-controls">
+                    <button id="prev-page" class="btn btn-secondary" disabled>
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <div class="page-numbers" id="page-numbers">
+                        <!-- Page numbers will be generated here -->
+                    </div>
+                    <button id="next-page" class="btn btn-secondary" disabled>
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Article Detail Modal -->
+    <div id="article-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Article Details</h2>
+                <button id="close-modal" class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="article-meta">
+                    <div class="meta-item">
+                        <strong>Fixture ID:</strong>
+                        <span id="modal-fixture-id">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <strong>Sources Count:</strong>
+                        <span id="modal-sources-count">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <strong>Generated:</strong>
+                        <span id="modal-generated-at">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <strong>Article Length:</strong>
+                        <span id="modal-article-length">-</span> characters
+                    </div>
+                </div>
+                <div class="article-content">
+                    <h3>Article Content</h3>
+                    <div id="modal-article-content" class="article-text">
+                        <!-- Article content will be populated here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="copy-article" class="btn btn-primary">
+                    <i class="fas fa-copy"></i> Copy Article
+                </button>
+                <button id="close-modal-btn" class="btn btn-secondary">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='js/generated_articles.js') }}"></script>
+</body>
+</html>

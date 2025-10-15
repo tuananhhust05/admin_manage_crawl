@@ -255,6 +255,12 @@ def video_detail_page():
 def article_summarizer_page():
     return render_template('article_summarizer.html')
 
+# Generated Articles Statistics Page
+@main.route('/generated-articles', methods=['GET'])
+def generated_articles_page():
+    """Render the generated articles statistics page"""
+    return render_template('generated_articles.html')
+
 # Articles Page
 @main.route('/articles', methods=['GET'])
 def articles_page():
