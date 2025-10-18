@@ -72,6 +72,103 @@ def extract_final_think_output(text: str) -> str:
         last_part = last_part.split("</think>")[-1]
     return last_part.strip()
 
+def query_related_articles(team_names):
+    """
+    Query các bài báo liên quan đến đội bóng trong 48h gần đây
+    """
+    try:
+        from app import mongo
+        
+        if not team_names:
+            logging.warning("⚠️ No team names provided for article query")
+            return []
+        
+        # Tính thời gian 48h trước
+        from datetime import timedelta
+        cutoff_time = datetime.utcnow() - timedelta(hours=48)
+        
+        logging.info(f"📅 Querying articles from: {cutoff_time.isoformat()} (48h ago)")
+        
+        # Tạo regex pattern để tìm kiếm team names trong content
+        # Escape special regex characters và tạo case-insensitive pattern
+        import re
+        team_patterns = []
+        for team_name in team_names:
+            # Escape special regex characters
+            escaped_name = re.escape(team_name)
+            team_patterns.append(escaped_name)
+        
+        # Combine patterns với OR operator
+        combined_pattern = "|".join(team_patterns)
+        
+        logging.info(f"🔍 Search pattern: {combined_pattern}")
+        
+        # Query articles với regex pattern
+        query = {
+            'content': {
+                '$regex': combined_pattern,
+                '$options': 'i'  # Case insensitive
+            },
+            'created_at': {
+                '$gte': cutoff_time
+            }
+        }
+        
+        # Sort by created_at descending (gần đây nhất trước)
+        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(20))
+        
+        logging.info(f"📰 Found {len(articles)} related articles in the last 48h")
+        
+        # Log một vài articles để debug
+        for i, article in enumerate(articles[:3]):
+            content_preview = article.get('content', '')[:100] + "..." if len(article.get('content', '')) > 100 else article.get('content', '')
+            logging.info(f"📄 Article {i+1}: {content_preview}")
+        
+        return articles
+        
+    except Exception as e:
+        logging.error(f"❌ Error querying related articles: {str(e)}")
+        logging.error(f"📋 Traceback: {traceback.format_exc()}")
+        return []
+
+def combine_match_and_article_data(match_data, related_articles, team_names):
+    """
+    Kết hợp dữ liệu trận đấu và bài báo liên quan
+    """
+    try:
+        combined_data = []
+        
+        # Thêm dữ liệu trận đấu
+        logging.info(f"📊 Adding {len(match_data)} match events")
+        for i, match_event in enumerate(match_data):
+            combined_data.append(f"MATCH_EVENT_{i+1}:\n{match_event}")
+        
+        # Thêm bài báo liên quan
+        logging.info(f"📰 Adding {len(related_articles)} related articles")
+        for i, article in enumerate(related_articles):
+            content = article.get('content', '')
+            source = article.get('source', 'unknown')
+            created_at = article.get('created_at', '')
+            
+            # Convert datetime to string if needed
+            if hasattr(created_at, 'isoformat'):
+                created_at = created_at.isoformat()
+            
+            article_text = f"RELATED_ARTICLE_{i+1} (Source: {source}, Date: {created_at}):\n{content}"
+            combined_data.append(article_text)
+        
+        logging.info(f"🔄 Combined data: {len(combined_data)} total sources")
+        logging.info(f"📊 Match events: {len(match_data)}")
+        logging.info(f"📰 Related articles: {len(related_articles)}")
+        logging.info(f"🏆 Team names used: {team_names}")
+        
+        return combined_data
+        
+    except Exception as e:
+        logging.error(f"❌ Error combining data: {str(e)}")
+        logging.error(f"📋 Traceback: {traceback.format_exc()}")
+        return match_data  # Fallback to match data only
+
 def extract_team_names_with_groq(articles_data):
     """
     Sử dụng Groq để xác định tên các đội bóng tham gia trận đấu
@@ -204,21 +301,32 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                 logging.warning(f"⚠️ Failed to extract team names: {team_names_result.get('error')}")
                 team_names = []
             
-            # Bước 2: Tạo bài viết
-            logging.info(f"🤖 Step 2: Generating article for fixture_id: {fixture_id} with {len(articles_data)} sources")
+            # Bước 2: Query các bài báo liên quan đến đội bóng
+            logging.info(f"📰 Step 2: Querying related articles for teams: {team_names}")
+            related_articles = query_related_articles(team_names)
+            
+            # Bước 3: Kết hợp dữ liệu trận đấu và bài báo liên quan
+            logging.info(f"🔄 Step 3: Combining match data and related articles")
+            combined_data = combine_match_and_article_data(articles_data, related_articles, team_names)
+            
+            # Bước 4: Tạo bài viết phân tích
+            logging.info(f"🤖 Step 4: Generating analysis article for fixture_id: {fixture_id}")
+            logging.info(f"📊 Sources: {len(articles_data)} match events + {len(related_articles)} related articles")
             
             # Generate article using Groq
-            groq_result = generate_article_with_groq(articles_data)
+            groq_result = generate_article_with_groq(combined_data)
             
             if groq_result['success']:
                 # Lưu bài báo đã generate vào collection generated_articles
                 generated_article_doc = {
                     'fixture_id': fixture_id,
-                    'title': f"Match Report - Fixture {fixture_id}",
+                    'title': f"Match Analysis - Fixture {fixture_id}",
                     'content': groq_result['article'],
                     'source_requests_count': len(related_requests),
+                    'related_articles_count': len(related_articles),
                     'team_names': team_names,  # Danh sách tên đội bóng
                     'team_names_raw': team_names_result.get('raw_response', ''),  # Raw response từ Groq
+                    'related_articles_ids': [str(article.get('_id', '')) for article in related_articles],  # IDs của related articles
                     'generated_at': datetime.utcnow(),
                     'created_at': datetime.utcnow(),
                     'request_id': request_id  # Link back to original request

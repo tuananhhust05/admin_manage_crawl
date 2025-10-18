@@ -69,7 +69,18 @@ Request sẽ được cập nhật với:
 🏆 Groq team names response: Chelsea, CHE, Blues, Liverpool, LIV, Reds
 🏆 Extracted 6 team name variations: ['Chelsea', 'CHE', 'Blues', 'Liverpool', 'LIV', 'Reds']
 ✅ Team names extracted successfully: ['Chelsea', 'CHE', 'Blues', 'Liverpool', 'LIV', 'Reds']
-🤖 Step 2: Generating article for fixture_id: fixture_123 with 5 sources
+📰 Step 2: Querying related articles for teams: ['Chelsea', 'CHE', 'Blues', 'Liverpool', 'LIV', 'Reds']
+📅 Querying articles from: 2024-01-13T10:30:00.000Z (48h ago)
+🔍 Search pattern: Chelsea|CHE|Blues|Liverpool|LIV|Reds
+📰 Found 8 related articles in the last 48h
+📄 Article 1: Chelsea's recent form has been impressive...
+📄 Article 2: Liverpool's tactical changes...
+🔄 Step 3: Combining match data and related articles
+📊 Adding 5 match events
+📰 Adding 8 related articles
+🔄 Combined data: 13 total sources
+🤖 Step 4: Generating analysis article for fixture_id: fixture_123
+📊 Sources: 5 match events + 8 related articles
 ✅ Generated article saved with ID: 64f8a1b2c3d4e5f6a7b8c9d1
 ✅ Updated request 64f8a1b2c3d4e5f6a7b8c9d0 with generated article info
 ```
@@ -138,9 +149,11 @@ graph TD
     G --> H[Thread: Wait 10s]
     H --> I[Thread: Query Related Requests]
     I --> J[Thread: Extract Team Names with Groq]
-    J --> K[Thread: Generate Article with Groq]
-    K --> L[Thread: Save Article with Team Names]
-    L --> M[Thread: Update Request]
+    J --> K[Thread: Query Related Articles from DB]
+    K --> L[Thread: Combine Match Data + Articles]
+    L --> M[Thread: Generate Analysis Article with Groq]
+    M --> N[Thread: Save Article with All Sources]
+    N --> O[Thread: Update Request]
 ```
 
 ## 🛠️ Configuration
@@ -161,11 +174,13 @@ GROQ_KEY=your_groq_api_key
 {
     "_id": "64f8a1b2c3d4e5f6a7b8c9d1",
     "fixture_id": "fixture_123",
-    "title": "Match Report - Fixture fixture_123",
-    "content": "Generated article content...",
+    "title": "Match Analysis - Fixture fixture_123",
+    "content": "Generated analysis article content...",
     "source_requests_count": 5,
+    "related_articles_count": 8,
     "team_names": ["Chelsea", "CHE", "Blues", "Liverpool", "LIV", "Reds"],
     "team_names_raw": "Chelsea, CHE, Blues, Liverpool, LIV, Reds",
+    "related_articles_ids": ["64f8a1b2c3d4e5f6a7b8c9d2", "64f8a1b2c3d4e5f6a7b8c9d3"],
     "generated_at": "2024-01-15T10:30:00.000Z",
     "created_at": "2024-01-15T10:30:00.000Z",
     "request_id": "64f8a1b2c3d4e5f6a7b8c9d0"
