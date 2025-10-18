@@ -116,13 +116,13 @@ def query_related_articles(team_names):
             }
         }
         
-        # Sort by created_at descending (gần đây nhất trước)
-        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(20))
+        # Sort by created_at descending (gần đây nhất trước) - Giới hạn 2 bài viết
+        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(2))
         
         logging.info(f"📰 Found {len(articles)} related articles in the last 48h")
         
-        # Log một vài articles để debug
-        for i, article in enumerate(articles[:3]):
+        # Log articles để debug (tối đa 2 bài)
+        for i, article in enumerate(articles):
             content_preview = article.get('content', '')[:100] + "..." if len(article.get('content', '')) > 100 else article.get('content', '')
             logging.info(f"📄 Article {i+1}: {content_preview}")
         
@@ -168,6 +168,7 @@ def combine_match_and_article_data(match_data, related_articles, team_names):
         combined_text = "\n---\n".join(combined_data)
         estimated_tokens = estimate_tokens(combined_text)
         logging.info(f"🎯 Estimated total tokens: {estimated_tokens}")
+        logging.info(f"📏 Combined text length: {len(combined_text)} characters")
         
         return combined_data
         
@@ -264,7 +265,7 @@ def extract_team_names_with_groq(articles_data):
         
         team_names_text = response.choices[0].message.content.strip()
         
-        logging.info(f"🏆 Groq team names response: {team_names_text}")
+        logging.info(f"🏆 Groq team names response length: {len(team_names_text)} characters")
         
         # Parse team names
         team_names = [name.strip() for name in team_names_text.split(',') if name.strip()]
@@ -368,7 +369,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             
             # Bước 4: Tạo bài viết phân tích
             logging.info(f"🤖 Step 4: Generating analysis article for fixture_id: {fixture_id}")
-            logging.info(f"📊 Sources: {len(articles_data)} match events + {len(related_articles)} related articles")
+            logging.info(f"📊 Sources: {len(articles_data)} match events + {len(related_articles)} related articles (max 2)")
             
             # Generate article using Groq
             groq_result = generate_article_with_groq(combined_data)
@@ -524,7 +525,7 @@ def extract_optimized_match_data(articles_data):
         logging.error(f"❌ Error extracting optimized match data: {str(e)}")
         return articles_data  # Fallback to original data
 
-def balance_token_usage(match_data, related_articles, max_input_tokens=3000):
+def balance_token_usage(match_data, related_articles, max_input_tokens=5000):
     """
     Cân bằng token usage giữa match data và article data
     """
@@ -543,7 +544,7 @@ def balance_token_usage(match_data, related_articles, max_input_tokens=3000):
             logging.warning(f"⚠️ Match data uses too many tokens ({match_tokens}), no space for articles")
             return match_data, []
         
-        # Tối ưu hóa articles để fit trong remaining tokens
+        # Tối ưu hóa articles để fit trong remaining tokens (tối đa 2 bài viết)
         optimized_articles = []
         current_tokens = 0
         
@@ -592,9 +593,9 @@ def generate_article_with_groq(articles_data):
     try:
         client = get_groq_client()
         
-        # Token constants - Giảm để tránh rate limit
-        MAX_OUTPUT_TOKENS = 2000  # Giảm từ 3000 xuống 2000
-        MAX_INPUT_TOKENS = 3000   # Giảm từ 5000 xuống 3000
+        # Token constants
+        MAX_OUTPUT_TOKENS = 3000
+        MAX_INPUT_TOKENS = 5000
         
         logging.info("🚀 Starting optimized article generation with Groq API")
         logging.info(f"📊 Input data: {len(articles_data)} items")
@@ -634,11 +635,12 @@ def generate_article_with_groq(articles_data):
         logging.info(f"📈 Token efficiency: {(final_tokens/MAX_INPUT_TOKENS)*100:.1f}% of limit")
         logging.info("=" * 80)
         
-        # Log detailed breakdown
+        # Log detailed breakdown (chỉ log summary, không log content)
         logging.info("📋 DETAILED BREAKDOWN:")
         for i, item in enumerate(final_data):
             item_tokens = estimate_tokens(item)
-            logging.info(f"  Item {i+1}: {item_tokens} tokens ({item[:50]}...)")
+            item_type = "MATCH" if item.startswith(("MATCH_EVENT_", "MATCH_INFO_", "MATCH_DETAILS")) else "ARTICLE"
+            logging.info(f"  Item {i+1} ({item_type}): {item_tokens} tokens")
         logging.info("=" * 80)
 
         # Prompt construction
@@ -701,13 +703,11 @@ def generate_article_with_groq(articles_data):
         generated_text = response.choices[0].message.content.strip()
         final_output = extract_final_think_output(generated_text)
         
-        # Log response for debugging
+        # Log response for debugging (chỉ log summary, không log content)
         logging.info("=" * 80)
         logging.info("GROQ API RESPONSE DEBUG:")
         logging.info(f"Raw response length: {len(generated_text)} characters")
-        logging.info(f"Raw response (first 500 chars): {generated_text[:500]}...")
         logging.info(f"Final output length: {len(final_output)} characters")
-        logging.info(f"Final output (first 500 chars): {final_output[:500]}...")
         logging.info("=" * 80)
         
         return {
