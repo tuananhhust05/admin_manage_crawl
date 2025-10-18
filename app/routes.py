@@ -558,15 +558,29 @@ def balance_token_usage(match_data, related_articles, max_input_tokens=5000):
             if hasattr(created_at, 'isoformat'):
                 created_at = created_at.isoformat()
             
+            # Giới hạn mỗi bài viết tối đa 1500 tokens
+            MAX_ARTICLE_TOKENS = 1500
+            
+            # Ước tính token cho content
+            content_tokens = estimate_tokens(content)
+            
+            # Nếu content vượt quá 1500 tokens, cắt bớt
+            if content_tokens > MAX_ARTICLE_TOKENS:
+                # Ước tính số ký tự có thể lấy cho 1500 tokens
+                chars_per_token = len(content) / content_tokens if content_tokens > 0 else 4
+                max_chars = int(MAX_ARTICLE_TOKENS * chars_per_token * 0.9)  # 90% để an toàn
+                content = content[:max_chars] + "..."
+                logging.info(f"✂️ Truncated article {i+1} content to fit 1500 token limit")
+            
             article_text = f"RELATED_ARTICLE_{i+1} (Source: {source}, Date: {created_at}):\n{content}"
             article_tokens = estimate_tokens(article_text)
             
             if current_tokens + article_tokens <= remaining_tokens:
                 optimized_articles.append(article_text)
                 current_tokens += article_tokens
-                logging.info(f"✅ Added article {i+1}: {article_tokens} tokens (total: {current_tokens})")
+                logging.info(f"✅ Added article {i+1}: {article_tokens} tokens (max 1500 per article, total: {current_tokens})")
             else:
-                # Cắt bớt content để fit
+                # Cắt bớt content để fit trong remaining tokens
                 available_tokens = remaining_tokens - current_tokens
                 if available_tokens > 100:  # Chỉ thêm nếu còn ít nhất 100 tokens
                     # Ước tính số ký tự có thể lấy
@@ -578,7 +592,7 @@ def balance_token_usage(match_data, related_articles, max_input_tokens=5000):
                     
                     optimized_articles.append(truncated_article)
                     current_tokens += estimate_tokens(truncated_article)
-                    logging.info(f"✂️ Truncated article {i+1}: {estimate_tokens(truncated_article)} tokens (total: {current_tokens})")
+                    logging.info(f"✂️ Further truncated article {i+1}: {estimate_tokens(truncated_article)} tokens (total: {current_tokens})")
                 break
         
         logging.info(f"🎯 Final token balance: Match={match_tokens}, Articles={current_tokens}, Total={match_tokens + current_tokens}")
@@ -643,13 +657,27 @@ def generate_article_with_groq(articles_data):
             logging.info(f"  Item {i+1} ({item_type}): {item_tokens} tokens")
         logging.info("=" * 80)
 
-        # Prompt construction
+        # Prompt construction - Tạo bài viết phân tích chuẩn
         prompt = (
-            "Using ONLY the information from the provided source articles, write a single, coherent, well-structured article in English. "
-            "Do NOT include any reasoning, explanations, or thoughts. "
-            "Do NOT add any information beyond the sources. "
-            "Return ONLY the article text.\n\n"
-            f"Source Articles:\n{combined_text}"
+            "Write a comprehensive match analysis article in English using ONLY the provided source information. "
+            "Structure the article with clear paragraphs and smooth transitions between ideas. "
+            "Focus on analysis and insights rather than just statistics. "
+            "Include the following elements:\n\n"
+            "1. **Opening Analysis**: Brief overview of the match context and key storylines\n"
+            "2. **Team Performance**: Analysis of both teams' strengths, weaknesses, and tactical approaches\n"
+            "3. **Key Moments**: Discussion of crucial events, turning points, and decisive moments\n"
+            "4. **Player Impact**: Analysis of standout performances and key individual contributions\n"
+            "5. **Tactical Breakdown**: Examination of formations, strategies, and tactical adjustments\n"
+            "6. **Conclusion**: Summary of the match outcome and its implications\n\n"
+            "Requirements:\n"
+            "- Write in a professional, engaging style with smooth transitions\n"
+            "- Use varied sentence structures and avoid repetitive phrasing\n"
+            "- Provide analytical insights, not just data dumps\n"
+            "- Create logical flow between paragraphs\n"
+            "- Do NOT include any reasoning, explanations, or thoughts about the writing process\n"
+            "- Do NOT add any information beyond the provided sources\n"
+            "- Return ONLY the final article text\n\n"
+            f"Source Information:\n{combined_text}"
         )
         
         # Log prompt info
