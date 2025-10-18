@@ -133,17 +133,17 @@ def query_related_articles(team_names):
 
 def combine_match_and_article_data(match_data, related_articles, team_names):
     """
-    Kết hợp dữ liệu trận đấu và bài báo liên quan
+    Kết hợp dữ liệu trận đấu và bài báo liên quan với tối ưu hóa token
     """
     try:
         combined_data = []
         
-        # Thêm dữ liệu trận đấu
+        # Thêm dữ liệu trận đấu (đã được tối ưu hóa)
         logging.info(f"📊 Adding {len(match_data)} match events")
         for i, match_event in enumerate(match_data):
             combined_data.append(f"MATCH_EVENT_{i+1}:\n{match_event}")
         
-        # Thêm bài báo liên quan
+        # Thêm bài báo liên quan (sẽ được tối ưu hóa trong generate_article_with_groq)
         logging.info(f"📰 Adding {len(related_articles)} related articles")
         for i, article in enumerate(related_articles):
             content = article.get('content', '')
@@ -161,6 +161,11 @@ def combine_match_and_article_data(match_data, related_articles, team_names):
         logging.info(f"📊 Match events: {len(match_data)}")
         logging.info(f"📰 Related articles: {len(related_articles)}")
         logging.info(f"🏆 Team names used: {team_names}")
+        
+        # Log token estimation
+        combined_text = "\n---\n".join(combined_data)
+        estimated_tokens = estimate_tokens(combined_text)
+        logging.info(f"🎯 Estimated total tokens: {estimated_tokens}")
         
         return combined_data
         
@@ -259,33 +264,48 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         
         logging.info(f"⏰ 10s delay completed, starting article generation for fixture_id: {fixture_id}")
         
-        # Lấy nội dung từ các requests liên quan
+        # Lấy nội dung từ các requests liên quan (tối ưu hóa)
         articles_data = []
         for req in related_requests:
-            # Lấy nội dung từ các field có thể có và stringify
-            content = None
-            if 'content' in req:
-                content = req['content']
-            elif 'data' in req:
-                content = req['data']
-            elif 'body' in req:
-                content = req['body']
-            else:
-                # Nếu không có field content, lấy toàn bộ request (trừ _id và datetime fields)
-                req_copy = {}
-                for k, v in req.items():
-                    if k == '_id':
-                        continue
-                    elif isinstance(v, datetime):
-                        # Convert datetime to ISO string
-                        req_copy[k] = v.isoformat()
-                    else:
-                        req_copy[k] = v
-                
-                content = json.dumps(req_copy, ensure_ascii=False, indent=2)
+            # Chỉ lấy trường info và match_details.match
+            optimized_req = {}
             
-            if content:
+            # Lấy trường info
+            if 'info' in req:
+                optimized_req['info'] = req['info']
+            
+            # Lấy match_details.match (chỉ từ request cuối cùng)
+            if req == related_requests[-1] and 'match_details' in req:
+                match_details = req['match_details']
+                if 'match' in match_details:
+                    optimized_req['match_details'] = {'match': match_details['match']}
+            
+            # Convert datetime objects to ISO strings
+            req_copy = {}
+            for k, v in optimized_req.items():
+                if isinstance(v, dict):
+                    req_copy[k] = {}
+                    for sub_k, sub_v in v.items():
+                        if isinstance(sub_v, datetime):
+                            req_copy[k][sub_k] = sub_v.isoformat()
+                        elif isinstance(sub_v, dict):
+                            req_copy[k][sub_k] = {}
+                            for sub_sub_k, sub_sub_v in sub_v.items():
+                                if isinstance(sub_sub_v, datetime):
+                                    req_copy[k][sub_k][sub_sub_k] = sub_sub_v.isoformat()
+                                else:
+                                    req_copy[k][sub_k][sub_sub_k] = sub_sub_v
+                        else:
+                            req_copy[k][sub_k] = sub_v
+                elif isinstance(v, datetime):
+                    req_copy[k] = v.isoformat()
+                else:
+                    req_copy[k] = v
+            
+            if req_copy:
+                content = json.dumps(req_copy, ensure_ascii=False, indent=2)
                 articles_data.append(content)
+                logging.info(f"✅ Optimized request data: {len(content)} chars")
         
         logging.info(f"📄 Collected {len(articles_data)} articles for generation")
         
@@ -398,8 +418,140 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         except Exception as update_error:
             logging.error(f"❌ Failed to update request with error: {str(update_error)}")
 
+def extract_optimized_match_data(articles_data):
+    """
+    Tối ưu hóa dữ liệu match - chỉ lấy info và match_details.match từ request cuối cùng
+    """
+    try:
+        if not articles_data:
+            return []
+        
+        # Lấy request cuối cùng (mới nhất)
+        last_request = articles_data[-1]
+        
+        optimized_data = []
+        
+        # Xử lý request cuối cùng để lấy match_details.match
+        if isinstance(last_request, str):
+            try:
+                last_request_dict = json.loads(last_request)
+            except:
+                last_request_dict = {}
+        else:
+            last_request_dict = last_request
+        
+        # Lấy match_details.match từ request cuối cùng
+        match_details = last_request_dict.get('match_details', {})
+        match_data = match_details.get('match', {})
+        
+        if match_data:
+            # Convert datetime objects to ISO strings
+            match_copy = {}
+            for k, v in match_data.items():
+                if isinstance(v, datetime):
+                    match_copy[k] = v.isoformat()
+                else:
+                    match_copy[k] = v
+            
+            optimized_data.append(f"MATCH_DETAILS:\n{json.dumps(match_copy, ensure_ascii=False, indent=2)}")
+            logging.info(f"✅ Extracted match_details from last request: {len(str(match_copy))} chars")
+        
+        # Xử lý tất cả requests để lấy trường info
+        for i, request in enumerate(articles_data):
+            if isinstance(request, str):
+                try:
+                    request_dict = json.loads(request)
+                except:
+                    continue
+            else:
+                request_dict = request
+            
+            # Chỉ lấy trường info
+            info_data = request_dict.get('info', {})
+            if info_data:
+                # Convert datetime objects to ISO strings
+                info_copy = {}
+                for k, v in info_data.items():
+                    if isinstance(v, datetime):
+                        info_copy[k] = v.isoformat()
+                    else:
+                        info_copy[k] = v
+                
+                optimized_data.append(f"MATCH_INFO_{i+1}:\n{json.dumps(info_copy, ensure_ascii=False, indent=2)}")
+                logging.info(f"✅ Extracted info from request {i+1}: {len(str(info_copy))} chars")
+        
+        logging.info(f"🎯 Optimized match data: {len(optimized_data)} items")
+        return optimized_data
+        
+    except Exception as e:
+        logging.error(f"❌ Error extracting optimized match data: {str(e)}")
+        return articles_data  # Fallback to original data
+
+def balance_token_usage(match_data, related_articles, max_input_tokens=5000):
+    """
+    Cân bằng token usage giữa match data và article data
+    """
+    try:
+        # Ước tính token cho match data
+        match_text = "\n---\n".join(match_data)
+        match_tokens = estimate_tokens(match_text)
+        
+        logging.info(f"📊 Match data tokens: {match_tokens}")
+        
+        # Tính toán token còn lại cho articles
+        remaining_tokens = max_input_tokens - match_tokens - 500  # Reserve 500 tokens for prompt
+        logging.info(f"🎯 Remaining tokens for articles: {remaining_tokens}")
+        
+        if remaining_tokens <= 0:
+            logging.warning(f"⚠️ Match data uses too many tokens ({match_tokens}), no space for articles")
+            return match_data, []
+        
+        # Tối ưu hóa articles để fit trong remaining tokens
+        optimized_articles = []
+        current_tokens = 0
+        
+        for i, article in enumerate(related_articles):
+            # Chỉ lấy content từ article
+            content = article.get('content', '')
+            source = article.get('source', 'unknown')
+            created_at = article.get('created_at', '')
+            
+            # Convert datetime to string if needed
+            if hasattr(created_at, 'isoformat'):
+                created_at = created_at.isoformat()
+            
+            article_text = f"RELATED_ARTICLE_{i+1} (Source: {source}, Date: {created_at}):\n{content}"
+            article_tokens = estimate_tokens(article_text)
+            
+            if current_tokens + article_tokens <= remaining_tokens:
+                optimized_articles.append(article_text)
+                current_tokens += article_tokens
+                logging.info(f"✅ Added article {i+1}: {article_tokens} tokens (total: {current_tokens})")
+            else:
+                # Cắt bớt content để fit
+                available_tokens = remaining_tokens - current_tokens
+                if available_tokens > 100:  # Chỉ thêm nếu còn ít nhất 100 tokens
+                    # Ước tính số ký tự có thể lấy
+                    chars_per_token = len(content) / article_tokens if article_tokens > 0 else 4
+                    max_chars = int(available_tokens * chars_per_token * 0.8)  # 80% để an toàn
+                    
+                    truncated_content = content[:max_chars] + "..."
+                    truncated_article = f"RELATED_ARTICLE_{i+1} (Source: {source}, Date: {created_at}):\n{truncated_content}"
+                    
+                    optimized_articles.append(truncated_article)
+                    current_tokens += estimate_tokens(truncated_article)
+                    logging.info(f"✂️ Truncated article {i+1}: {estimate_tokens(truncated_article)} tokens (total: {current_tokens})")
+                break
+        
+        logging.info(f"🎯 Final token balance: Match={match_tokens}, Articles={current_tokens}, Total={match_tokens + current_tokens}")
+        return match_data, optimized_articles
+        
+    except Exception as e:
+        logging.error(f"❌ Error balancing token usage: {str(e)}")
+        return match_data, related_articles
+
 def generate_article_with_groq(articles_data):
-    """Generate article using Groq API"""
+    """Generate article using Groq API with optimized token usage"""
     try:
         client = get_groq_client()
         
@@ -407,40 +559,49 @@ def generate_article_with_groq(articles_data):
         MAX_OUTPUT_TOKENS = 3000
         MAX_INPUT_TOKENS = 5000
         
-        # Đảm bảo tất cả dữ liệu đều là string
-        string_articles = []
-        for article in articles_data:
-            if isinstance(article, dict):
-                # Convert datetime objects to ISO strings before JSON serialization
-                article_copy = {}
-                for k, v in article.items():
-                    if isinstance(v, datetime):
-                        article_copy[k] = v.isoformat()
-                    else:
-                        article_copy[k] = v
-                string_articles.append(json.dumps(article_copy, ensure_ascii=False, indent=2))
-            else:
-                string_articles.append(str(article))
+        logging.info("🚀 Starting optimized article generation with Groq API")
+        logging.info(f"📊 Input data: {len(articles_data)} items")
         
-        # Estimate token usage
-        combined_text = "\n---\n".join(string_articles)
-        estimated_input_tokens = estimate_tokens(combined_text)
+        # Bước 1: Tối ưu hóa match data
+        logging.info("🎯 Step 1: Extracting optimized match data")
+        optimized_match_data = extract_optimized_match_data(articles_data)
         
-        if estimated_input_tokens > MAX_INPUT_TOKENS:
-            string_articles = truncate_articles(string_articles, MAX_INPUT_TOKENS)
-
-        # Combine all articles
-        combined_articles = "\n---\n".join(string_articles)
+        # Bước 2: Tách match data và article data
+        match_data = []
+        related_articles = []
         
-        logging.info(f"Combined articles length: {len(combined_articles)} characters")
-        logging.info(f"Estimated tokens: {estimate_tokens(combined_articles)}")
+        for item in articles_data:
+            if item.startswith("MATCH_EVENT_") or item.startswith("MATCH_INFO_") or item.startswith("MATCH_DETAILS"):
+                match_data.append(item)
+            elif item.startswith("RELATED_ARTICLE_"):
+                related_articles.append(item)
         
-        # Log input data for debugging
+        # Thêm optimized match data
+        match_data.extend(optimized_match_data)
+        
+        # Bước 3: Cân bằng token usage
+        logging.info("⚖️ Step 2: Balancing token usage")
+        balanced_match_data, balanced_articles = balance_token_usage(match_data, related_articles, MAX_INPUT_TOKENS)
+        
+        # Bước 4: Kết hợp dữ liệu cuối cùng
+        final_data = balanced_match_data + balanced_articles
+        combined_text = "\n---\n".join(final_data)
+        final_tokens = estimate_tokens(combined_text)
+        
         logging.info("=" * 80)
-        logging.info("GROQ API INPUT DEBUG:")
-        logging.info(f"Number of articles: {len(string_articles)}")
-        for i, article in enumerate(string_articles):
-            logging.info(f"Article {i+1} (first 200 chars): {article[:200]}...")
+        logging.info("🎯 OPTIMIZED TOKEN USAGE SUMMARY:")
+        logging.info(f"📊 Match data items: {len(balanced_match_data)}")
+        logging.info(f"📰 Article data items: {len(balanced_articles)}")
+        logging.info(f"📏 Total characters: {len(combined_text)}")
+        logging.info(f"🎯 Total tokens: {final_tokens}")
+        logging.info(f"📈 Token efficiency: {(final_tokens/MAX_INPUT_TOKENS)*100:.1f}% of limit")
+        logging.info("=" * 80)
+        
+        # Log detailed breakdown
+        logging.info("📋 DETAILED BREAKDOWN:")
+        for i, item in enumerate(final_data):
+            item_tokens = estimate_tokens(item)
+            logging.info(f"  Item {i+1}: {item_tokens} tokens ({item[:50]}...)")
         logging.info("=" * 80)
 
         # Prompt construction
@@ -449,15 +610,13 @@ def generate_article_with_groq(articles_data):
             "Do NOT include any reasoning, explanations, or thoughts. "
             "Do NOT add any information beyond the sources. "
             "Return ONLY the article text.\n\n"
-            f"Source Articles:\n{combined_articles}"
+            f"Source Articles:\n{combined_text}"
         )
         
-        # Log full prompt for debugging
-        logging.info("=" * 80)
-        logging.info("GROQ API PROMPT DEBUG:")
-        logging.info(f"Prompt length: {len(prompt)} characters")
-        logging.info(f"Full prompt:\n{prompt}")
-        logging.info("=" * 80)
+        # Log prompt info
+        prompt_tokens = estimate_tokens(prompt)
+        logging.info(f"📝 Prompt tokens: {prompt_tokens}")
+        logging.info(f"📏 Total input tokens: {final_tokens + prompt_tokens}")
 
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
