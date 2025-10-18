@@ -103,7 +103,8 @@ def query_related_articles(team_names):
         
         logging.info(f"🔍 Search pattern: {combined_pattern}")
         
-        # Query articles với regex pattern
+        # Query articles 
+        # với regex pattern
         query = {
             'content': {
                 '$regex': combined_pattern,
