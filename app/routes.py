@@ -72,21 +72,88 @@ def extract_final_think_output(text: str) -> str:
         last_part = last_part.split("</think>")[-1]
     return last_part.strip()
 
+def extract_team_names_with_groq(articles_data):
+    """
+    Sử dụng Groq để xác định tên các đội bóng tham gia trận đấu
+    """
+    try:
+        client = get_groq_client()
+        
+        # Đảm bảo tất cả dữ liệu đều là string
+        string_articles = []
+        for article in articles_data:
+            if isinstance(article, dict):
+                string_articles.append(json.dumps(article, ensure_ascii=False, indent=2))
+            else:
+                string_articles.append(str(article))
+        
+        # Combine all articles
+        combined_articles = "\n---\n".join(string_articles)
+        
+        # Prompt để xác định tên đội bóng
+        prompt = (
+            "Based on the provided match data, identify the two teams playing in this match. "
+            "Return ONLY a comma-separated list of team names and their possible variations. "
+            "Include official names, common names, and abbreviations. "
+            "Format: Team1, Team1_abbrev, Team1_common, Team2, Team2_abbrev, Team2_common\n\n"
+            "Example: Chelsea, CHE, Blues, Liverpool, LIV, Reds\n\n"
+            f"Match Data:\n{combined_articles}"
+        )
+        
+        logging.info("🔍 Extracting team names with Groq...")
+        logging.info(f"📄 Input length: {len(combined_articles)} characters")
+        
+        # Call Groq API
+        response = client.chat.completions.create(
+            model="llama-3.1-70b-versatile",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            max_tokens=200,
+            temperature=0.1
+        )
+        
+        team_names_text = response.choices[0].message.content.strip()
+        
+        logging.info(f"🏆 Groq team names response: {team_names_text}")
+        
+        # Parse team names
+        team_names = [name.strip() for name in team_names_text.split(',') if name.strip()]
+        
+        logging.info(f"🏆 Extracted {len(team_names)} team name variations: {team_names}")
+        
+        return {
+            'success': True,
+            'team_names': team_names,
+            'raw_response': team_names_text
+        }
+        
+    except Exception as e:
+        logging.error(f"❌ Error extracting team names: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e),
+            'team_names': []
+        }
+
 def process_article_generation_async(fixture_id, related_requests, request_id):
     """
-    Xử lý tạo bài viết trong thread riêng với delay 20s
+    Xử lý tạo bài viết trong thread riêng với delay 10s
     """
     try:
         # Import mongo trong thread để tránh lỗi
         from app import mongo
         logging.info(f"🚀 Starting async article generation for fixture_id: {fixture_id}")
         logging.info(f"📋 Thread ID: {threading.current_thread().ident}")
-        logging.info(f"⏰ Waiting 20 seconds before processing...")
+        logging.info(f"⏰ Waiting 10 seconds before processing...")
         
-        # Delay 20 seconds
-        time.sleep(20)
+        # Delay 10 seconds
+        time.sleep(10)
         
-        logging.info(f"⏰ 20s delay completed, starting article generation for fixture_id: {fixture_id}")
+        logging.info(f"⏰ 10s delay completed, starting article generation for fixture_id: {fixture_id}")
         
         # Lấy nội dung từ các requests liên quan
         articles_data = []
@@ -110,7 +177,19 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         logging.info(f"📄 Collected {len(articles_data)} articles for generation")
         
         if articles_data:
-            logging.info(f"🤖 Generating article for fixture_id: {fixture_id} with {len(articles_data)} sources")
+            # Bước 1: Xác định tên các đội bóng trước
+            logging.info(f"🏆 Step 1: Extracting team names for fixture_id: {fixture_id}")
+            team_names_result = extract_team_names_with_groq(articles_data)
+            
+            if team_names_result['success']:
+                team_names = team_names_result['team_names']
+                logging.info(f"✅ Team names extracted successfully: {team_names}")
+            else:
+                logging.warning(f"⚠️ Failed to extract team names: {team_names_result.get('error')}")
+                team_names = []
+            
+            # Bước 2: Tạo bài viết
+            logging.info(f"🤖 Step 2: Generating article for fixture_id: {fixture_id} with {len(articles_data)} sources")
             
             # Generate article using Groq
             groq_result = generate_article_with_groq(articles_data)
@@ -122,6 +201,8 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                     'title': f"Match Report - Fixture {fixture_id}",
                     'content': groq_result['article'],
                     'source_requests_count': len(related_requests),
+                    'team_names': team_names,  # Danh sách tên đội bóng
+                    'team_names_raw': team_names_result.get('raw_response', ''),  # Raw response từ Groq
                     'generated_at': datetime.utcnow(),
                     'created_at': datetime.utcnow(),
                     'request_id': request_id  # Link back to original request
@@ -2731,7 +2812,7 @@ def save_request():
                         
                         logging.info(f"🚀 Started async article generation thread for fixture_id: {fixture_id}")
                         logging.info(f"📋 Thread name: {thread.name}")
-                        logging.info(f"⏰ Article generation will start in 20 seconds...")
+                        logging.info(f"⏰ Article generation will start in 10 seconds...")
                         
                         # Set initial status - sẽ được update bởi thread
                         request_doc['article_generation_status'] = 'processing'

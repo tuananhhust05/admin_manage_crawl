@@ -61,10 +61,15 @@ Request sẽ được cập nhật với:
 ```
 🚀 Starting async article generation for fixture_id: fixture_123
 📋 Thread ID: 140234567890
-⏰ Waiting 20 seconds before processing...
-⏰ 20s delay completed, starting article generation for fixture_id: fixture_123
+⏰ Waiting 10 seconds before processing...
+⏰ 10s delay completed, starting article generation for fixture_id: fixture_123
 📄 Collected 5 articles for generation
-🤖 Generating article for fixture_id: fixture_123 with 5 sources
+🏆 Step 1: Extracting team names for fixture_id: fixture_123
+🔍 Extracting team names with Groq...
+🏆 Groq team names response: Chelsea, CHE, Blues, Liverpool, LIV, Reds
+🏆 Extracted 6 team name variations: ['Chelsea', 'CHE', 'Blues', 'Liverpool', 'LIV', 'Reds']
+✅ Team names extracted successfully: ['Chelsea', 'CHE', 'Blues', 'Liverpool', 'LIV', 'Reds']
+🤖 Step 2: Generating article for fixture_id: fixture_123 with 5 sources
 ✅ Generated article saved with ID: 64f8a1b2c3d4e5f6a7b8c9d1
 ✅ Updated request 64f8a1b2c3d4e5f6a7b8c9d0 with generated article info
 ```
@@ -130,11 +135,12 @@ graph TD
     D -->|Yes| E[Start Thread]
     D -->|No| F[Return Response]
     E --> G[Return Response Immediately]
-    G --> H[Thread: Wait 20s]
+    G --> H[Thread: Wait 10s]
     H --> I[Thread: Query Related Requests]
-    I --> J[Thread: Generate Article]
-    J --> K[Thread: Save Article]
-    K --> L[Thread: Update Request]
+    I --> J[Thread: Extract Team Names with Groq]
+    J --> K[Thread: Generate Article with Groq]
+    K --> L[Thread: Save Article with Team Names]
+    L --> M[Thread: Update Request]
 ```
 
 ## 🛠️ Configuration
@@ -147,8 +153,24 @@ GROQ_KEY=your_groq_api_key
 
 ### MongoDB Collections
 - **`requests`**: Lưu trữ raw requests
-- **`generated_articles`**: Lưu trữ bài viết đã tạo
+- **`generated_articles`**: Lưu trữ bài viết đã tạo (bao gồm team names)
 - **`articles`**: Lưu trữ source articles
+
+### Generated Article Document Structure
+```json
+{
+    "_id": "64f8a1b2c3d4e5f6a7b8c9d1",
+    "fixture_id": "fixture_123",
+    "title": "Match Report - Fixture fixture_123",
+    "content": "Generated article content...",
+    "source_requests_count": 5,
+    "team_names": ["Chelsea", "CHE", "Blues", "Liverpool", "LIV", "Reds"],
+    "team_names_raw": "Chelsea, CHE, Blues, Liverpool, LIV, Reds",
+    "generated_at": "2024-01-15T10:30:00.000Z",
+    "created_at": "2024-01-15T10:30:00.000Z",
+    "request_id": "64f8a1b2c3d4e5f6a7b8c9d0"
+}
+```
 
 ## 📝 Usage Examples
 
