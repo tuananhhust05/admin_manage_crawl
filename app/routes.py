@@ -75,7 +75,7 @@ def extract_final_think_output(text: str) -> str:
 
 def query_related_articles(team_names):
     """
-    Query các bài báo liên quan đến đội bóng trong 48h gần đây
+    Query các bài báo liên quan đến đội bóng trong 4h gần đây
     """
     try:
         from app import mongo
@@ -84,11 +84,11 @@ def query_related_articles(team_names):
             logging.warning("⚠️ No team names provided for article query")
             return []
         
-        # Tính thời gian 48h trước
+        # Tính thời gian 4h trước
         from datetime import timedelta
-        cutoff_time = datetime.utcnow() - timedelta(hours=48)
+        cutoff_time = datetime.utcnow() - timedelta(hours=4)
         
-        logging.info(f"📅 Querying articles from: {cutoff_time.isoformat()} (48h ago)")
+        logging.info(f"📅 Querying articles from: {cutoff_time.isoformat()} (4h ago)")
         
         # Tạo regex pattern để tìm kiếm team names trong content
         # Escape special regex characters và tạo case-insensitive pattern
@@ -119,7 +119,7 @@ def query_related_articles(team_names):
         # Sort by created_at descending (gần đây nhất trước) - Giới hạn 2 bài viết
         articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(2))
         
-        logging.info(f"📰 Found {len(articles)} related articles in the last 48h")
+        logging.info(f"📰 Found {len(articles)} related articles in the last 4h")
         
         # Log articles để debug (tối đa 2 bài)
         for i, article in enumerate(articles):
@@ -288,19 +288,19 @@ def extract_team_names_with_groq(articles_data):
 
 def process_article_generation_async(fixture_id, related_requests, request_id):
     """
-    Xử lý tạo bài viết trong thread riêng với delay 10s
+    Xử lý tạo bài viết trong thread riêng với delay 4h
     """
     try:
         # Import mongo trong thread để tránh lỗi
         from app import mongo
         logging.info(f"🚀 Starting async article generation for fixture_id: {fixture_id}")
         logging.info(f"📋 Thread ID: {threading.current_thread().ident}")
-        logging.info(f"⏰ Waiting 10 seconds before processing...")
+        logging.info(f"⏰ Waiting 4 hours before processing...")
         
-        # Delay 10 seconds
-        time.sleep(10)
+        # Delay 4 hours (4 * 60 * 60 = 14400 seconds)
+        time.sleep(4 * 60 * 60)
         
-        logging.info(f"⏰ 10s delay completed, starting article generation for fixture_id: {fixture_id}")
+        logging.info(f"⏰ 4h delay completed, starting article generation for fixture_id: {fixture_id}")
         
         # Lấy nội dung từ các requests liên quan (tối ưu hóa)
         articles_data = []
