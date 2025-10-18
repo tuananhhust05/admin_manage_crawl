@@ -11,6 +11,7 @@ import logging
 from typing import List, Dict, Any
 import traceback
 import time
+import threading
 # Import Elasticsearch service
 from elasticsearch_service import elasticsearch_service
 
@@ -70,6 +71,127 @@ def extract_final_think_output(text: str) -> str:
     if "</think>" in last_part:
         last_part = last_part.split("</think>")[-1]
     return last_part.strip()
+
+def process_article_generation_async(fixture_id, related_requests, request_id):
+    """
+    Xử lý tạo bài viết trong thread riêng với delay 20s
+    """
+    try:
+        # Import mongo trong thread để tránh lỗi
+        from app import mongo
+        logging.info(f"🚀 Starting async article generation for fixture_id: {fixture_id}")
+        logging.info(f"📋 Thread ID: {threading.current_thread().ident}")
+        logging.info(f"⏰ Waiting 20 seconds before processing...")
+        
+        # Delay 20 seconds
+        time.sleep(20)
+        
+        logging.info(f"⏰ 20s delay completed, starting article generation for fixture_id: {fixture_id}")
+        
+        # Lấy nội dung từ các requests liên quan
+        articles_data = []
+        for req in related_requests:
+            # Lấy nội dung từ các field có thể có và stringify
+            content = None
+            if 'content' in req:
+                content = req['content']
+            elif 'data' in req:
+                content = req['data']
+            elif 'body' in req:
+                content = req['body']
+            else:
+                # Nếu không có field content, lấy toàn bộ request (trừ _id)
+                req_copy = {k: v for k, v in req.items() if k != '_id'}
+                content = json.dumps(req_copy, ensure_ascii=False, indent=2)
+            
+            if content:
+                articles_data.append(content)
+        
+        logging.info(f"📄 Collected {len(articles_data)} articles for generation")
+        
+        if articles_data:
+            logging.info(f"🤖 Generating article for fixture_id: {fixture_id} with {len(articles_data)} sources")
+            
+            # Generate article using Groq
+            groq_result = generate_article_with_groq(articles_data)
+            
+            if groq_result['success']:
+                # Lưu bài báo đã generate vào collection generated_articles
+                generated_article_doc = {
+                    'fixture_id': fixture_id,
+                    'title': f"Match Report - Fixture {fixture_id}",
+                    'content': groq_result['article'],
+                    'source_requests_count': len(related_requests),
+                    'generated_at': datetime.utcnow(),
+                    'created_at': datetime.utcnow(),
+                    'request_id': request_id  # Link back to original request
+                }
+                
+                article_result = mongo.db.generated_articles.insert_one(generated_article_doc)
+                
+                logging.info(f"✅ Generated article saved with ID: {article_result.inserted_id}")
+                
+                # Update original request với thông tin generated article
+                mongo.db.requests.update_one(
+                    {'_id': ObjectId(request_id)},
+                    {
+                        '$set': {
+                            'generated_article_id': str(article_result.inserted_id),
+                            'article_generated': True,
+                            'article_generated_at': datetime.utcnow()
+                        }
+                    }
+                )
+                
+                logging.info(f"✅ Updated request {request_id} with generated article info")
+                
+            else:
+                logging.error(f"❌ Failed to generate article: {groq_result.get('error', 'Unknown error')}")
+                
+                # Update original request với error
+                mongo.db.requests.update_one(
+                    {'_id': ObjectId(request_id)},
+                    {
+                        '$set': {
+                            'article_generated': False,
+                            'generation_error': groq_result.get('error', 'Unknown error'),
+                            'generation_failed_at': datetime.utcnow()
+                        }
+                    }
+                )
+        else:
+            logging.warning(f"⚠️ No articles data found for fixture_id: {fixture_id}")
+            
+            # Update original request với error
+            mongo.db.requests.update_one(
+                {'_id': ObjectId(request_id)},
+                {
+                    '$set': {
+                        'article_generated': False,
+                        'generation_error': 'No articles data found',
+                        'generation_failed_at': datetime.utcnow()
+                    }
+                }
+            )
+            
+    except Exception as e:
+        logging.error(f"❌ Error in async article generation for fixture_id {fixture_id}: {str(e)}")
+        logging.error(f"📋 Traceback: {traceback.format_exc()}")
+        
+        # Update original request với error
+        try:
+            mongo.db.requests.update_one(
+                {'_id': ObjectId(request_id)},
+                {
+                    '$set': {
+                        'article_generated': False,
+                        'generation_error': str(e),
+                        'generation_failed_at': datetime.utcnow()
+                    }
+                }
+            )
+        except Exception as update_error:
+            logging.error(f"❌ Failed to update request with error: {str(update_error)}")
 
 def generate_article_with_groq(articles_data):
     """Generate article using Groq API"""
@@ -2583,84 +2705,47 @@ def save_request():
             try:
                 fixture_id = raw_data.get('fixture_id')
                 if not fixture_id:
-                    logging.warning("event_match_end request missing fixture_id")
+                    logging.warning("⚠️ event_match_end request missing fixture_id")
+                    request_doc['article_generated'] = False
+                    request_doc['generation_error'] = 'Missing fixture_id'
                 else:
+                    logging.info(f"🎯 Processing event_match_end for fixture_id: {fixture_id}")
+                    
                     # Query tất cả requests có cùng fixture_id
                     related_requests = list(mongo.db.requests.find({
                         'fixture_id': fixture_id,
                         'type': {'$ne': 'event_match_end'}  # Loại trừ chính request này
                     }))
                     
-                    logging.info(f"Found {len(related_requests)} related requests for fixture_id: {fixture_id}")
+                    logging.info(f"📊 Found {len(related_requests)} related requests for fixture_id: {fixture_id}")
                     
                     if related_requests:
-                        # Lấy nội dung từ các requests liên quan
-                        articles_data = []
-                        for req in related_requests:
-                            # Lấy nội dung từ các field có thể có và stringify
-                            content = None
-                            
-                            # Thử lấy từ các field text trực tiếp
-                            if req.get('content'):
-                                content = str(req.get('content'))
-                            elif req.get('message'):
-                                content = str(req.get('message'))
-                            elif req.get('data'):
-                                # Nếu data là dict, stringify nó
-                                if isinstance(req.get('data'), dict):
-                                    content = json.dumps(req.get('data'), ensure_ascii=False, indent=2)
-                                else:
-                                    content = str(req.get('data'))
-                            else:
-                                # Stringify toàn bộ request (loại bỏ _id và created_at)
-                                req_copy = {k: v for k, v in req.items() if k not in ['_id', 'created_at']}
-                                content = json.dumps(req_copy, ensure_ascii=False, indent=2)
-                            
-                            if content and content.strip():
-                                articles_data.append(content.strip())
-                                logging.info(f"Added content from request {req.get('_id')}: {content[:100]}...")
+                        # Khởi tạo thread riêng để xử lý tạo bài viết
+                        thread = threading.Thread(
+                            target=process_article_generation_async,
+                            args=(fixture_id, related_requests, str(result.inserted_id)),
+                            name=f"ArticleGen-{fixture_id}"
+                        )
+                        thread.daemon = True  # Thread sẽ tự động kết thúc khi main thread kết thúc
+                        thread.start()
                         
-                        logging.info(f"Total articles data collected: {len(articles_data)}")
+                        logging.info(f"🚀 Started async article generation thread for fixture_id: {fixture_id}")
+                        logging.info(f"📋 Thread name: {thread.name}")
+                        logging.info(f"⏰ Article generation will start in 20 seconds...")
                         
-                        if articles_data:
-                            logging.info(f"Generating article for fixture_id: {fixture_id} with {len(articles_data)} sources")
-                            
-                            # Generate article using Groq
-                            groq_result = generate_article_with_groq(articles_data)
-                            
-                            if groq_result['success']:
-                                # Lưu bài báo đã generate vào collection generated_articles
-                                generated_article_doc = {
-                                    'fixture_id': fixture_id,
-                                    'title': f"Match Report - Fixture {fixture_id}",
-                                    'content': groq_result['article'],
-                                    'source_requests_count': len(related_requests),
-                                    'generated_at': datetime.utcnow(),
-                                    'created_at': datetime.utcnow()
-                                }
-                                
-                                article_result = mongo.db.generated_articles.insert_one(generated_article_doc)
-                                
-                                logging.info(f"Generated article saved with ID: {article_result.inserted_id}")
-                                
-                                # Thêm thông tin vào response
-                                request_doc['generated_article_id'] = str(article_result.inserted_id)
-                                request_doc['article_generated'] = True
-                            else:
-                                logging.error(f"Failed to generate article: {groq_result.get('error')}")
-                                request_doc['article_generated'] = False
-                                request_doc['generation_error'] = groq_result.get('error')
-                        else:
-                            logging.warning(f"No content found in related requests for fixture_id: {fixture_id}")
-                            request_doc['article_generated'] = False
-                            request_doc['generation_error'] = 'No content found in related requests'
+                        # Set initial status - sẽ được update bởi thread
+                        request_doc['article_generation_status'] = 'processing'
+                        request_doc['article_generation_started_at'] = datetime.utcnow()
+                        request_doc['article_generated'] = False  # Sẽ được update khi hoàn thành
+                        
                     else:
-                        logging.warning(f"No related requests found for fixture_id: {fixture_id}")
+                        logging.warning(f"⚠️ No related requests found for fixture_id: {fixture_id}")
                         request_doc['article_generated'] = False
                         request_doc['generation_error'] = 'No related requests found'
                         
             except Exception as e:
-                logging.error(f"Error processing event_match_end: {str(e)}")
+                logging.error(f"❌ Error setting up event_match_end processing: {str(e)}")
+                logging.error(f"📋 Traceback: {traceback.format_exc()}")
                 request_doc['article_generated'] = False
                 request_doc['generation_error'] = str(e)
         
@@ -2671,7 +2756,9 @@ def save_request():
             'created_at': request_doc['created_at'].isoformat(),
             'article_generated': request_doc.get('article_generated', False),
             'generated_article_id': request_doc.get('generated_article_id'),
-            'generation_error': request_doc.get('generation_error')
+            'generation_error': request_doc.get('generation_error'),
+            'article_generation_status': request_doc.get('article_generation_status', 'not_applicable'),
+            'article_generation_started_at': request_doc.get('article_generation_started_at').isoformat() if request_doc.get('article_generation_started_at') else None
         }), 201
         
     except Exception as e:
