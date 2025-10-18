@@ -83,7 +83,14 @@ def extract_team_names_with_groq(articles_data):
         string_articles = []
         for article in articles_data:
             if isinstance(article, dict):
-                string_articles.append(json.dumps(article, ensure_ascii=False, indent=2))
+                # Convert datetime objects to ISO strings before JSON serialization
+                article_copy = {}
+                for k, v in article.items():
+                    if isinstance(v, datetime):
+                        article_copy[k] = v.isoformat()
+                    else:
+                        article_copy[k] = v
+                string_articles.append(json.dumps(article_copy, ensure_ascii=False, indent=2))
             else:
                 string_articles.append(str(article))
         
@@ -167,8 +174,17 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             elif 'body' in req:
                 content = req['body']
             else:
-                # Nếu không có field content, lấy toàn bộ request (trừ _id)
-                req_copy = {k: v for k, v in req.items() if k != '_id'}
+                # Nếu không có field content, lấy toàn bộ request (trừ _id và datetime fields)
+                req_copy = {}
+                for k, v in req.items():
+                    if k == '_id':
+                        continue
+                    elif isinstance(v, datetime):
+                        # Convert datetime to ISO string
+                        req_copy[k] = v.isoformat()
+                    else:
+                        req_copy[k] = v
+                
                 content = json.dumps(req_copy, ensure_ascii=False, indent=2)
             
             if content:
@@ -287,7 +303,14 @@ def generate_article_with_groq(articles_data):
         string_articles = []
         for article in articles_data:
             if isinstance(article, dict):
-                string_articles.append(json.dumps(article, ensure_ascii=False, indent=2))
+                # Convert datetime objects to ISO strings before JSON serialization
+                article_copy = {}
+                for k, v in article.items():
+                    if isinstance(v, datetime):
+                        article_copy[k] = v.isoformat()
+                    else:
+                        article_copy[k] = v
+                string_articles.append(json.dumps(article_copy, ensure_ascii=False, indent=2))
             else:
                 string_articles.append(str(article))
         
