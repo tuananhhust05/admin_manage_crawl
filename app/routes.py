@@ -12,6 +12,7 @@ from typing import List, Dict, Any
 import traceback
 import time
 import threading
+import re
 # Import Elasticsearch service
 from elasticsearch_service import elasticsearch_service
 
@@ -213,18 +214,53 @@ def extract_team_names_with_groq(articles_data):
         logging.info("🔍 Extracting team names with Groq...")
         logging.info(f"📄 Input length: {len(combined_articles)} characters")
         
-        # Call Groq API
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            max_tokens=200,
-            temperature=0.1
-        )
+        # Call Groq API với retry logic
+        max_retries = 3
+        base_delay = 5  # 5 seconds base delay
+        
+        for attempt in range(max_retries):
+            try:
+                logging.info(f"🔄 Attempt {attempt + 1}/{max_retries} to extract team names")
+                
+                response = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=200,
+                    temperature=0.1
+                )
+                
+                # Nếu thành công, break khỏi retry loop
+                break
+                
+            except Exception as e:
+                error_str = str(e)
+                
+                # Kiểm tra nếu là rate limit error
+                if "rate_limit_exceeded" in error_str or "429" in error_str:
+                    if attempt < max_retries - 1:  # Chưa phải lần thử cuối
+                        # Tính delay time với exponential backoff
+                        delay = base_delay * (2 ** attempt)
+                        
+                        # Extract wait time từ error message nếu có
+                        wait_match = re.search(r'Please try again in (\d+\.?\d*)s', error_str)
+                        if wait_match:
+                            delay = float(wait_match.group(1)) + 2  # Thêm 2s buffer
+                        
+                        logging.warning(f"⚠️ Rate limit hit for team extraction, waiting {delay}s before retry {attempt + 2}/{max_retries}")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        # Lần thử cuối cùng thất bại
+                        logging.error(f"❌ All retry attempts failed for team extraction due to rate limit")
+                        raise e
+                else:
+                    # Không phải rate limit error, raise ngay
+                    raise e
         
         team_names_text = response.choices[0].message.content.strip()
         
@@ -488,7 +524,7 @@ def extract_optimized_match_data(articles_data):
         logging.error(f"❌ Error extracting optimized match data: {str(e)}")
         return articles_data  # Fallback to original data
 
-def balance_token_usage(match_data, related_articles, max_input_tokens=5000):
+def balance_token_usage(match_data, related_articles, max_input_tokens=3000):
     """
     Cân bằng token usage giữa match data và article data
     """
@@ -552,13 +588,13 @@ def balance_token_usage(match_data, related_articles, max_input_tokens=5000):
         return match_data, related_articles
 
 def generate_article_with_groq(articles_data):
-    """Generate article using Groq API with optimized token usage"""
+    """Generate article using Groq API with optimized token usage and rate limit handling"""
     try:
         client = get_groq_client()
         
-        # Token constants
-        MAX_OUTPUT_TOKENS = 3000
-        MAX_INPUT_TOKENS = 5000
+        # Token constants - Giảm để tránh rate limit
+        MAX_OUTPUT_TOKENS = 2000  # Giảm từ 3000 xuống 2000
+        MAX_INPUT_TOKENS = 3000   # Giảm từ 5000 xuống 3000
         
         logging.info("🚀 Starting optimized article generation with Groq API")
         logging.info(f"📊 Input data: {len(articles_data)} items")
@@ -580,7 +616,7 @@ def generate_article_with_groq(articles_data):
         # Thêm optimized match data
         match_data.extend(optimized_match_data)
         
-        # Bước 3: Cân bằng token usage
+        # Bước 3: Cân bằng token usage với giới hạn thấp hơn
         logging.info("⚖️ Step 2: Balancing token usage")
         balanced_match_data, balanced_articles = balance_token_usage(match_data, related_articles, MAX_INPUT_TOKENS)
         
@@ -619,11 +655,48 @@ def generate_article_with_groq(articles_data):
         logging.info(f"📝 Prompt tokens: {prompt_tokens}")
         logging.info(f"📏 Total input tokens: {final_tokens + prompt_tokens}")
 
-        response = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="groq/compound",
-            max_tokens=MAX_OUTPUT_TOKENS,
-        )
+        # Retry logic với exponential backoff cho rate limit
+        max_retries = 3
+        base_delay = 10  # 10 seconds base delay
+        
+        for attempt in range(max_retries):
+            try:
+                logging.info(f"🔄 Attempt {attempt + 1}/{max_retries} to call Groq API")
+                
+                response = client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model="groq/compound",
+                    max_tokens=MAX_OUTPUT_TOKENS,
+                )
+                
+                # Nếu thành công, break khỏi retry loop
+                break
+                
+            except Exception as e:
+                error_str = str(e)
+                
+                # Kiểm tra nếu là rate limit error
+                if "rate_limit_exceeded" in error_str or "429" in error_str:
+                    if attempt < max_retries - 1:  # Chưa phải lần thử cuối
+                        # Tính delay time với exponential backoff
+                        delay = base_delay * (2 ** attempt)
+                        
+                        # Extract wait time từ error message nếu có
+                        import re
+                        wait_match = re.search(r'Please try again in (\d+\.?\d*)s', error_str)
+                        if wait_match:
+                            delay = float(wait_match.group(1)) + 5  # Thêm 5s buffer
+                        
+                        logging.warning(f"⚠️ Rate limit hit, waiting {delay}s before retry {attempt + 2}/{max_retries}")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        # Lần thử cuối cùng thất bại
+                        logging.error(f"❌ All retry attempts failed due to rate limit")
+                        raise e
+                else:
+                    # Không phải rate limit error, raise ngay
+                    raise e
 
         generated_text = response.choices[0].message.content.strip()
         final_output = extract_final_think_output(generated_text)
