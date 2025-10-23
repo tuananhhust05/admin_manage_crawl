@@ -84,11 +84,11 @@ def query_related_articles(team_names):
             logging.warning("⚠️ No team names provided for article query")
             return []
         
-        # Tính thời gian 4h trước - COMMENTED FOR TESTING (NO TIME LIMIT)
+        # Tính thời gian 4h trước
         from datetime import timedelta
-        # cutoff_time = datetime.utcnow() - timedelta(hours=4)
+        cutoff_time = datetime.utcnow() - timedelta(hours=4)
         
-        logging.info(f"📅 Querying articles from: ALL TIME (no time limit for testing)")
+        logging.info(f"📅 Querying articles from: {cutoff_time} (last 4 hours)")
         
         # Tạo regex pattern để tìm kiếm team names trong content
         # Escape special regex characters và tạo case-insensitive pattern
@@ -104,22 +104,21 @@ def query_related_articles(team_names):
         
         logging.info(f"🔍 Search pattern: {combined_pattern}")
         
-        # Query articles 
-        # với regex pattern - COMMENTED TIME FILTER FOR TESTING
+        # Query articles với regex pattern và time filter
         query = {
             'content': {
                 '$regex': combined_pattern,
                 '$options': 'i'  # Case insensitive
+            },
+            'created_at': {
+                '$gte': cutoff_time
             }
-            # 'created_at': {
-            #     '$gte': cutoff_time
-            # }
         }
         
         # Sort by created_at descending (gần đây nhất trước) - Giới hạn 2 bài viết
         articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(2))
         
-        logging.info(f"📰 Found {len(articles)} related articles (no time limit for testing)")
+        logging.info(f"📰 Found {len(articles)} related articles (last 4 hours)")
         
         # Log articles để debug (tối đa 2 bài)
         for i, article in enumerate(articles):
@@ -297,8 +296,8 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         logging.info(f"📋 Thread ID: {threading.current_thread().ident}")
         logging.info(f"⏰ Waiting 4 hours before processing...")
         
-        # Delay 4 hours (4 * 60 * 60 = 14400 seconds) - COMMENTED FOR TESTING
-        # time.sleep(4 * 60 * 60)
+        # Delay 4 hours (4 * 60 * 60 = 14400 seconds)
+        time.sleep(4 * 60 * 60)
         
         logging.info(f"⏰ 4h delay completed, starting article generation for fixture_id: {fixture_id}")
         
