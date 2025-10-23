@@ -27,11 +27,46 @@ class ArticlesManager {
         this.selectedArticles = new Set();
         this.allArticles = [];
         this.searchTimeout = null;
+        
+        // Pagination properties
+        this.currentPage = 1;
+        this.perPage = 20;
+        this.totalPages = 1;
+        this.totalCount = 0;
+        this.hasMore = false;
+        this.isLoadingMore = false;
+        
+        // Create load more button
+        this.createLoadMoreButton();
     }
 
     init() {
         this.bindEvents();
         this.loadArticles();
+    }
+
+    createLoadMoreButton() {
+        // Create load more button container
+        const loadMoreContainer = document.createElement('div');
+        loadMoreContainer.id = 'load-more-container';
+        loadMoreContainer.className = 'load-more-container';
+        loadMoreContainer.style.display = 'none';
+        
+        const loadMoreBtn = document.createElement('button');
+        loadMoreBtn.id = 'load-more-btn';
+        loadMoreBtn.className = 'apple-button apple-button-secondary load-more-btn';
+        loadMoreBtn.innerHTML = '<i class="fas fa-plus"></i> <span>Load More Articles</span>';
+        loadMoreBtn.addEventListener('click', () => this.loadMoreArticles());
+        
+        loadMoreContainer.appendChild(loadMoreBtn);
+        
+        // Insert after articles grid
+        if (this.articlesGrid && this.articlesGrid.parentNode) {
+            this.articlesGrid.parentNode.insertBefore(loadMoreContainer, this.articlesGrid.nextSibling);
+        }
+        
+        this.loadMoreContainer = loadMoreContainer;
+        this.loadMoreBtn = loadMoreBtn;
     }
 
     bindEvents() {
@@ -99,9 +134,15 @@ class ArticlesManager {
         });
     }
 
-    async loadArticles() {
+    async loadArticles(resetPagination = true) {
         try {
-            this.showLoading();
+            if (resetPagination) {
+                this.currentPage = 1;
+                this.showLoading();
+            } else {
+                this.isLoadingMore = true;
+                this.updateLoadMoreButton();
+            }
             
             const url = new URL('/api/articles', window.location.origin);
             if (this.currentTypeFilter !== 'all') {
@@ -110,6 +151,8 @@ class ArticlesManager {
             if (this.currentSearchQuery) {
                 url.searchParams.set('search', this.currentSearchQuery);
             }
+            url.searchParams.set('page', this.currentPage);
+            url.searchParams.set('per_page', this.perPage);
             
             console.log('🔍 Loading articles from:', url.toString());
             
@@ -119,23 +162,62 @@ class ArticlesManager {
             console.log('📊 API Response:', data);
             
             if (data.success) {
-                this.allArticles = data.articles;
-                this.renderArticles(data.articles);
-                this.updateStats(data.total_count, data.selected_type);
-                this.updateTypeFilter(data.available_types);
-                this.updateSearchUI(data.search_query);
+                if (resetPagination) {
+                    this.allArticles = data.articles;
+                } else {
+                    this.allArticles = [...this.allArticles, ...data.articles];
+                }
+                
+                this.renderArticles(this.allArticles);
+                this.updatePaginationInfo(data.pagination);
+                this.updateStats(data.pagination.total_count, data.filters.selected_type);
+                this.updateTypeFilter(data.filters.available_types);
+                this.updateSearchUI(data.filters.search_query);
             } else {
                 this.showError(data.error || 'Failed to load articles');
             }
         } catch (error) {
             console.error('❌ Error loading articles:', error);
             this.showError('Network error: ' + error.message);
+        } finally {
+            this.isLoadingMore = false;
+            this.updateLoadMoreButton();
         }
     }
 
     filterByType(type) {
         this.currentTypeFilter = type;
         this.loadArticles();
+    }
+
+    async loadMoreArticles() {
+        if (this.isLoadingMore || !this.hasMore) return;
+        
+        this.currentPage++;
+        await this.loadArticles(false);
+    }
+
+    updatePaginationInfo(pagination) {
+        this.totalPages = pagination.total_pages;
+        this.totalCount = pagination.total_count;
+        this.hasMore = pagination.has_next;
+        
+        // Show/hide load more button
+        if (this.loadMoreContainer) {
+            this.loadMoreContainer.style.display = this.hasMore ? 'block' : 'none';
+        }
+    }
+
+    updateLoadMoreButton() {
+        if (this.loadMoreBtn) {
+            if (this.isLoadingMore) {
+                this.loadMoreBtn.disabled = true;
+                this.loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Loading...</span>';
+            } else {
+                this.loadMoreBtn.disabled = false;
+                this.loadMoreBtn.innerHTML = '<i class="fas fa-plus"></i> <span>Load More Articles</span>';
+            }
+        }
     }
 
     handleSearch(query) {
@@ -581,6 +663,29 @@ const additionalStyles = `
     .loading-spinner i {
         font-size: 24px;
         margin-bottom: 16px;
+    }
+    
+    .load-more-container {
+        display: flex;
+        justify-content: center;
+        margin: var(--spacing-xl) 0;
+        padding: var(--spacing-lg);
+    }
+    
+    .load-more-btn {
+        min-width: 200px;
+        transition: all 0.3s ease;
+    }
+    
+    .load-more-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-large);
+    }
+    
+    .load-more-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
     }
     
     .apple-article-detail {

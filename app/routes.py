@@ -997,16 +997,24 @@ def create_sample_articles():
             'error': str(e)
         }), 500
 
-# API to get articles for frontend
+# API to get articles for frontend with pagination
 @main.route('/api/articles', methods=['GET'])
 def get_articles():
-    """API to get articles for frontend with search and filter support"""
+    """API to get articles for frontend with search, filter and pagination support"""
     try:
         mongo = get_mongo()
         
         # Get parameters from query
         selected_type = request.args.get('type', 'fotmob')
         search_query = request.args.get('search', '').strip()
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        
+        # Validate pagination parameters
+        if page < 1:
+            page = 1
+        if per_page < 1 or per_page > 100:
+            per_page = 20
         
         # Build query
         query = {}
@@ -1023,8 +1031,15 @@ def get_articles():
                 {'summary': {'$regex': search_query, '$options': 'i'}}
             ]
         
-        # Query articles with filters, sorted by newest first
-        articles = list(mongo.db.articles.find(query).sort('created_at', -1))
+        # Calculate skip for pagination
+        skip = (page - 1) * per_page
+        
+        # Get total count for pagination info
+        total_count = mongo.db.articles.count_documents(query)
+        
+        # Query articles with filters, pagination, sorted by newest first
+        articles_cursor = mongo.db.articles.find(query).sort('created_at', -1).skip(skip).limit(per_page)
+        articles = list(articles_cursor)
         
         # Get unique types for the dropdown
         unique_types = mongo.db.articles.distinct('source')
@@ -1035,13 +1050,27 @@ def get_articles():
             if 'created_at' in article:
                 article['created_at'] = article['created_at'].isoformat() if hasattr(article['created_at'], 'isoformat') else str(article['created_at'])
         
+        # Calculate pagination info
+        total_pages = (total_count + per_page - 1) // per_page
+        has_next = page < total_pages
+        has_prev = page > 1
+        
         return jsonify({
             'success': True,
             'articles': articles,
-            'selected_type': selected_type,
-            'search_query': search_query,
-            'available_types': unique_types,
-            'total_count': len(articles)
+            'pagination': {
+                'current_page': page,
+                'per_page': per_page,
+                'total_count': total_count,
+                'total_pages': total_pages,
+                'has_next': has_next,
+                'has_prev': has_prev
+            },
+            'filters': {
+                'selected_type': selected_type,
+                'search_query': search_query,
+                'available_types': unique_types
+            }
         })
         
     except Exception as e:
