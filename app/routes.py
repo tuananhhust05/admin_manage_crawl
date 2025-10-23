@@ -84,11 +84,11 @@ def query_related_articles(team_names):
             logging.warning("⚠️ No team names provided for article query")
             return []
         
-        # Tính thời gian 4h trước
+        # Tính thời gian 4h trước - COMMENTED FOR TESTING (NO TIME LIMIT)
         from datetime import timedelta
-        cutoff_time = datetime.utcnow() - timedelta(hours=4)
+        # cutoff_time = datetime.utcnow() - timedelta(hours=4)
         
-        logging.info(f"📅 Querying articles from: {cutoff_time.isoformat()} (4h ago)")
+        logging.info(f"📅 Querying articles from: ALL TIME (no time limit for testing)")
         
         # Tạo regex pattern để tìm kiếm team names trong content
         # Escape special regex characters và tạo case-insensitive pattern
@@ -105,21 +105,21 @@ def query_related_articles(team_names):
         logging.info(f"🔍 Search pattern: {combined_pattern}")
         
         # Query articles 
-        # với regex pattern
+        # với regex pattern - COMMENTED TIME FILTER FOR TESTING
         query = {
             'content': {
                 '$regex': combined_pattern,
                 '$options': 'i'  # Case insensitive
-            },
-            'created_at': {
-                '$gte': cutoff_time
             }
+            # 'created_at': {
+            #     '$gte': cutoff_time
+            # }
         }
         
         # Sort by created_at descending (gần đây nhất trước) - Giới hạn 2 bài viết
         articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(2))
         
-        logging.info(f"📰 Found {len(articles)} related articles in the last 4h")
+        logging.info(f"📰 Found {len(articles)} related articles (no time limit for testing)")
         
         # Log articles để debug (tối đa 2 bài)
         for i, article in enumerate(articles):
@@ -297,8 +297,8 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         logging.info(f"📋 Thread ID: {threading.current_thread().ident}")
         logging.info(f"⏰ Waiting 4 hours before processing...")
         
-        # Delay 4 hours (4 * 60 * 60 = 14400 seconds)
-        time.sleep(4 * 60 * 60)
+        # Delay 4 hours (4 * 60 * 60 = 14400 seconds) - COMMENTED FOR TESTING
+        # time.sleep(4 * 60 * 60)
         
         logging.info(f"⏰ 4h delay completed, starting article generation for fixture_id: {fixture_id}")
         
@@ -657,23 +657,35 @@ def generate_article_with_groq(articles_data):
             logging.info(f"  Item {i+1} ({item_type}): {item_tokens} tokens")
         logging.info("=" * 80)
 
-        # Prompt construction - Tạo bài viết phân tích chuẩn
+        # Prompt construction - Tạo bài viết phân tích chuẩn với cấu trúc chi tiết
         prompt = (
             "Write a comprehensive match analysis article in English using ONLY the provided source information. "
             "Structure the article with clear paragraphs and smooth transitions between ideas. "
             "Focus on analysis and insights rather than just statistics. "
-            "Include the following elements:\n\n"
-            "1. **Opening Analysis**: Brief overview of the match context and key storylines\n"
-            "2. **Team Performance**: Analysis of both teams' strengths, weaknesses, and tactical approaches\n"
-            "3. **Key Moments**: Discussion of crucial events, turning points, and decisive moments\n"
-            "4. **Player Impact**: Analysis of standout performances and key individual contributions\n"
-            "5. **Tactical Breakdown**: Examination of formations, strategies, and tactical adjustments\n"
-            "6. **Conclusion**: Summary of the match outcome and its implications\n\n"
+            "Include the following detailed elements in this exact order:\n\n"
+            "1. **Match Overview** – venue, weather (if relevant)\n"
+            "2. **Lineups & Formations** – Starting XI, formation, notable absentees\n"
+            "3. **Pre-match Context** – Stakes of the match (title race, relegation, rivalry)\n"
+            "4. **First-half Summary** – Key events, goals, chances, momentum\n"
+            "5. **Second-half Summary** – Turning points, late drama, substitutions\n"
+            "6. **Goals & Scorers** – Minute, scorer, assist, type of goal\n"
+            "7. **Tactical Approaches** – How each team set up and adjusted during the game & how it change after conceding goals or taking the lead\n"
+            "8. **Key Battles** – Important duels (midfield control, wing matchups)\n"
+            "9. **Player Performances** – underperformers, work rate (midfielders specially)\n"
+            "10. **Goalkeeper Impact** – Crucial saves, distribution, mistakes\n"
+            "11. **Set-pieces & Transitions** – Corners, free kicks, counters, defensive recovery\n"
+            "12. **Managerial Decisions** – Tactical tweaks, substitutions, in-game reactions\n"
+            "13. **Turning Points / Controversial Moments** – VAR calls, red cards, missed penalties\n"
+            "14. **Missed chances or sitters that shaped the outcome**\n"
+            "15. **Impact of Sub & effect after changing**\n"
+            "16. **Flaws of losing team**\n"
+            "17. **Short note on player of the match**\n\n"
             "Requirements:\n"
             "- Write in a professional, engaging style with smooth transitions\n"
             "- Use varied sentence structures and avoid repetitive phrasing\n"
             "- Provide analytical insights, not just data dumps\n"
             "- Create logical flow between paragraphs\n"
+            "- Cover all 17 sections comprehensively\n"
             "- Do NOT include any reasoning, explanations, or thoughts about the writing process\n"
             "- Do NOT add any information beyond the provided sources\n"
             "- Return ONLY the final article text\n\n"
