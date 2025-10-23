@@ -303,6 +303,14 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         logging.info(f"⏰ 4h delay completed, starting article generation for fixture_id: {fixture_id}")
         
         # Lấy nội dung từ các requests liên quan (tối ưu hóa)
+        logging.info(f"🔍 Processing {len(related_requests)} related requests...")
+        
+        # Giới hạn tối đa 100 requests để tránh xử lý quá nhiều dữ liệu
+        MAX_REQUESTS = 100
+        if len(related_requests) > MAX_REQUESTS:
+            logging.info(f"⚠️ Limiting requests from {len(related_requests)} to {MAX_REQUESTS} (latest first)")
+            related_requests = related_requests[:MAX_REQUESTS]
+        
         articles_data = []
         for req in related_requests:
             # Chỉ lấy trường info và match_details.match
@@ -347,10 +355,20 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         
         logging.info(f"📄 Collected {len(articles_data)} articles for generation")
         
+        if not articles_data:
+            logging.warning(f"⚠️ No articles data found for fixture_id: {fixture_id}")
+            return
+        
         if articles_data:
             # Bước 1: Xác định tên các đội bóng trước
             logging.info(f"🏆 Step 1: Extracting team names for fixture_id: {fixture_id}")
-            team_names_result = extract_team_names_with_groq(articles_data)
+            try:
+                team_names_result = extract_team_names_with_groq(articles_data)
+                logging.info(f"✅ Team names extraction completed: {team_names_result}")
+            except Exception as e:
+                logging.error(f"❌ Error in team names extraction: {str(e)}")
+                logging.error(f"📋 Traceback: {traceback.format_exc()}")
+                return
             
             if team_names_result['success']:
                 team_names = team_names_result['team_names']
@@ -361,18 +379,37 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             
             # Bước 2: Query các bài báo liên quan đến đội bóng
             logging.info(f"📰 Step 2: Querying related articles for teams: {team_names}")
-            related_articles = query_related_articles(team_names)
+            try:
+                related_articles = query_related_articles(team_names)
+                logging.info(f"✅ Related articles query completed: {len(related_articles)} articles found")
+            except Exception as e:
+                logging.error(f"❌ Error in related articles query: {str(e)}")
+                logging.error(f"📋 Traceback: {traceback.format_exc()}")
+                return
             
             # Bước 3: Kết hợp dữ liệu trận đấu và bài báo liên quan
             logging.info(f"🔄 Step 3: Combining match data and related articles")
-            combined_data = combine_match_and_article_data(articles_data, related_articles, team_names)
+            try:
+                combined_data = combine_match_and_article_data(articles_data, related_articles, team_names)
+                logging.info(f"✅ Data combination completed: {len(combined_data)} items")
+            except Exception as e:
+                logging.error(f"❌ Error in data combination: {str(e)}")
+                logging.error(f"📋 Traceback: {traceback.format_exc()}")
+                return
             
             # Bước 4: Tạo bài viết phân tích
             logging.info(f"🤖 Step 4: Generating analysis article for fixture_id: {fixture_id}")
             logging.info(f"📊 Sources: {len(articles_data)} match events + {len(related_articles)} related articles (max 2)")
             
             # Generate article using Groq
-            groq_result = generate_article_with_groq(combined_data)
+            try:
+                logging.info(f"🚀 Starting Groq article generation...")
+                groq_result = generate_article_with_groq(combined_data)
+                logging.info(f"✅ Groq article generation completed: {groq_result}")
+            except Exception as e:
+                logging.error(f"❌ Error in Groq article generation: {str(e)}")
+                logging.error(f"📋 Traceback: {traceback.format_exc()}")
+                return
             
             if groq_result['success']:
                 # Lưu bài báo đã generate vào collection generated_articles
