@@ -422,6 +422,18 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                     'team_names': team_names,  # Danh sách tên đội bóng
                     'team_names_raw': team_names_result.get('raw_response', ''),  # Raw response từ Groq
                     'related_articles_ids': [str(article.get('_id', '')) for article in related_articles],  # IDs của related articles
+                    'related_articles_links': [article.get('url', '') for article in related_articles if article.get('url')],  # Links gốc của related articles
+                    'related_articles_details': [  # Chi tiết đầy đủ của related articles
+                        {
+                            'id': str(article.get('_id', '')),
+                            'title': article.get('title', ''),
+                            'source': article.get('source', ''),
+                            'url': article.get('url', ''),
+                            'created_at': article.get('created_at', ''),
+                            'content_preview': article.get('content', '')[:200] + '...' if len(article.get('content', '')) > 200 else article.get('content', '')
+                        }
+                        for article in related_articles
+                    ],
                     'generated_at': datetime.utcnow(),
                     'created_at': datetime.utcnow(),
                     'request_id': request_id  # Link back to original request
@@ -430,6 +442,10 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                 article_result = mongo.db.generated_articles.insert_one(generated_article_doc)
                 
                 logging.info(f"✅ Generated article saved with ID: {article_result.inserted_id}")
+                logging.info(f"📎 Related articles links saved: {len(generated_article_doc['related_articles_links'])} links")
+                for i, link in enumerate(generated_article_doc['related_articles_links']):
+                    if link:
+                        logging.info(f"  Link {i+1}: {link}")
                 
                 # Update original request với thông tin generated article
                 mongo.db.requests.update_one(
@@ -3432,26 +3448,36 @@ def delete_request(request_id):
 @main.route('/api/generated-articles', methods=['GET'])
 def get_generated_articles():
     """
-    API lấy danh sách generated articles
+    API lấy danh sách generated articles với pagination
     """
     try:
         mongo = get_mongo()
         
         # Lấy parameters từ query
-        limit = int(request.args.get('limit', 50))
-        skip = int(request.args.get('skip', 0))
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
         fixture_id = request.args.get('fixture_id')
+        
+        # Validate pagination parameters
+        if page < 1:
+            page = 1
+        if per_page < 1 or per_page > 100:
+            per_page = 20
         
         # Build query
         query = {}
         if fixture_id:
             query['fixture_id'] = fixture_id
         
-        # Query generated articles, sorted by newest first
-        articles = list(mongo.db.generated_articles.find(query)
-                       .sort('generated_at', -1)
-                       .skip(skip)
-                       .limit(limit))
+        # Calculate skip for pagination
+        skip = (page - 1) * per_page
+        
+        # Get total count for pagination info
+        total_count = mongo.db.generated_articles.count_documents(query)
+        
+        # Query generated articles with pagination, sorted by newest first
+        articles_cursor = mongo.db.generated_articles.find(query).sort('generated_at', -1).skip(skip).limit(per_page)
+        articles = list(articles_cursor)
         
         # Convert ObjectId to string for JSON serialization
         for article in articles:
@@ -3461,15 +3487,25 @@ def get_generated_articles():
             if 'created_at' in article:
                 article['created_at'] = article['created_at'].isoformat() if hasattr(article['created_at'], 'isoformat') else str(article['created_at'])
         
-        # Get total count
-        total_count = mongo.db.generated_articles.count_documents(query)
+        # Calculate pagination info
+        total_pages = (total_count + per_page - 1) // per_page
+        has_next = page < total_pages
+        has_prev = page > 1
         
         return jsonify({
             'success': True,
             'articles': articles,
-            'total_count': total_count,
-            'limit': limit,
-            'skip': skip
+            'pagination': {
+                'current_page': page,
+                'per_page': per_page,
+                'total_count': total_count,
+                'total_pages': total_pages,
+                'has_next': has_next,
+                'has_prev': has_prev
+            },
+            'filters': {
+                'fixture_id': fixture_id
+            }
         }), 200
         
     except Exception as e:

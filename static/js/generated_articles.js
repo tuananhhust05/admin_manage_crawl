@@ -1,9 +1,12 @@
 class GeneratedArticlesManager {
     constructor() {
+        // Pagination properties
         this.currentPage = 1;
-        this.itemsPerPage = 10;
-        this.totalItems = 0;
-        this.totalPages = 0;
+        this.perPage = 20;
+        this.totalPages = 1;
+        this.totalCount = 0;
+        this.hasMore = false;
+        this.isLoadingMore = false;
         this.articles = [];
         this.filteredArticles = [];
         
@@ -32,6 +35,9 @@ class GeneratedArticlesManager {
         this.pageNumbers = document.getElementById('page-numbers');
         this.paginationInfo = document.getElementById('pagination-info');
         
+        // Create load more button
+        this.createLoadMoreButton();
+        
         // Modal elements
         this.articleModal = document.getElementById('article-modal');
         this.modalTitle = document.getElementById('modal-title');
@@ -54,6 +60,30 @@ class GeneratedArticlesManager {
     init() {
         this.bindEvents();
         this.loadArticles();
+    }
+
+    createLoadMoreButton() {
+        // Create load more button container
+        const loadMoreContainer = document.createElement('div');
+        loadMoreContainer.id = 'load-more-container';
+        loadMoreContainer.className = 'load-more-container';
+        loadMoreContainer.style.display = 'none';
+        
+        const loadMoreBtn = document.createElement('button');
+        loadMoreBtn.id = 'load-more-btn';
+        loadMoreBtn.className = 'btn btn-secondary load-more-btn';
+        loadMoreBtn.innerHTML = '<i class="fas fa-plus"></i> Load More Articles';
+        loadMoreBtn.addEventListener('click', () => this.loadMoreArticles());
+        
+        loadMoreContainer.appendChild(loadMoreBtn);
+        
+        // Insert after articles container
+        if (this.articlesContainer && this.articlesContainer.parentNode) {
+            this.articlesContainer.parentNode.insertBefore(loadMoreContainer, this.articlesContainer.nextSibling);
+        }
+        
+        this.loadMoreContainer = loadMoreContainer;
+        this.loadMoreBtn = loadMoreBtn;
     }
     
     bindEvents() {
@@ -98,17 +128,33 @@ class GeneratedArticlesManager {
         this.retryBtn.addEventListener('click', () => this.loadArticles());
     }
     
-    async loadArticles() {
+    async loadArticles(resetPagination = true) {
         try {
-            this.showLoading();
+            if (resetPagination) {
+                this.currentPage = 1;
+                this.showLoading();
+            } else {
+                this.isLoadingMore = true;
+                this.updateLoadMoreButton();
+            }
             
-            const response = await fetch('/api/generated-articles?limit=1000');
+            const url = new URL('/api/generated-articles', window.location.origin);
+            url.searchParams.set('page', this.currentPage);
+            url.searchParams.set('per_page', this.perPage);
+            
+            const response = await fetch(url.toString());
             const data = await response.json();
             
             if (data.success) {
-                this.articles = data.articles;
+                if (resetPagination) {
+                    this.articles = data.articles;
+                } else {
+                    this.articles = [...this.articles, ...data.articles];
+                }
+                
+                this.updatePaginationInfo(data.pagination);
                 this.updateStats();
-                this.handleFilter();
+                this.renderArticles();
             } else {
                 throw new Error(data.error || 'Failed to load articles');
             }
@@ -116,6 +162,39 @@ class GeneratedArticlesManager {
         } catch (error) {
             console.error('Error loading articles:', error);
             this.showError(error.message);
+        } finally {
+            this.isLoadingMore = false;
+            this.updateLoadMoreButton();
+        }
+    }
+
+    async loadMoreArticles() {
+        if (this.isLoadingMore || !this.hasMore) return;
+        
+        this.currentPage++;
+        await this.loadArticles(false);
+    }
+
+    updatePaginationInfo(pagination) {
+        this.totalPages = pagination.total_pages;
+        this.totalCount = pagination.total_count;
+        this.hasMore = pagination.has_next;
+        
+        // Show/hide load more button
+        if (this.loadMoreContainer) {
+            this.loadMoreContainer.style.display = this.hasMore ? 'block' : 'none';
+        }
+    }
+
+    updateLoadMoreButton() {
+        if (this.loadMoreBtn) {
+            if (this.isLoadingMore) {
+                this.loadMoreBtn.disabled = true;
+                this.loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            } else {
+                this.loadMoreBtn.disabled = false;
+                this.loadMoreBtn.innerHTML = '<i class="fas fa-plus"></i> Load More Articles';
+            }
         }
     }
     
@@ -277,6 +356,9 @@ class GeneratedArticlesManager {
                 this.modalArticleContent.innerHTML = '<p class="no-content">No content available</p>';
             }
             
+            // Add related articles section if available
+            this.addRelatedArticlesSection(article);
+            
             // Show modal with animation
             this.articleModal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
@@ -290,6 +372,51 @@ class GeneratedArticlesManager {
             console.error('Error showing article modal:', error);
             this.showToast('error', 'Error', 'Failed to load article details');
         }
+    }
+
+    addRelatedArticlesSection(article) {
+        // Remove existing related articles section if any
+        const existingSection = document.getElementById('related-articles-section');
+        if (existingSection) {
+            existingSection.remove();
+        }
+
+        // Check if article has related articles data
+        if (!article.related_articles_details || article.related_articles_details.length === 0) {
+            return;
+        }
+
+        // Create related articles section
+        const relatedSection = document.createElement('div');
+        relatedSection.id = 'related-articles-section';
+        relatedSection.className = 'related-articles-section';
+        
+        relatedSection.innerHTML = `
+            <div class="section-header">
+                <h4>Related Articles Used</h4>
+                <span class="badge badge-info">${article.related_articles_details.length} articles</span>
+            </div>
+            <div class="related-articles-list">
+                ${article.related_articles_details.map((relatedArticle, index) => `
+                    <div class="related-article-item">
+                        <div class="article-header">
+                            <h5 class="article-title">${relatedArticle.title || 'Untitled'}</h5>
+                            <span class="article-source badge badge-secondary">${relatedArticle.source || 'Unknown'}</span>
+                        </div>
+                        <div class="article-meta">
+                            <span class="article-date">${new Date(relatedArticle.created_at).toLocaleDateString()}</span>
+                            ${relatedArticle.url ? `<a href="${relatedArticle.url}" target="_blank" class="article-link">View Original <i class="fas fa-external-link-alt"></i></a>` : ''}
+                        </div>
+                        <div class="article-preview">
+                            ${relatedArticle.content_preview || 'No preview available'}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        // Insert after article content
+        this.modalArticleContent.parentNode.insertBefore(relatedSection, this.modalArticleContent.nextSibling);
     }
     
     formatArticleContent(content) {
@@ -384,6 +511,131 @@ class GeneratedArticlesManager {
         });
     }
 }
+
+// Add CSS for related articles section
+const additionalStyles = `
+    .related-articles-section {
+        margin-top: 2rem;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+    }
+    
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .section-header h4 {
+        margin: 0;
+        color: #495057;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    
+    .related-articles-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .related-article-item {
+        background: white;
+        padding: 1rem;
+        border-radius: 6px;
+        border: 1px solid #e9ecef;
+        transition: box-shadow 0.2s ease;
+    }
+    
+    .related-article-item:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .article-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.5rem;
+    }
+    
+    .article-title {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #212529;
+        flex: 1;
+        margin-right: 1rem;
+    }
+    
+    .article-source {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    .article-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    
+    .article-link {
+        color: #007bff;
+        text-decoration: none;
+        font-weight: 500;
+    }
+    
+    .article-link:hover {
+        text-decoration: underline;
+    }
+    
+    .article-preview {
+        font-size: 0.85rem;
+        color: #495057;
+        line-height: 1.4;
+        max-height: 4rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+    }
+    
+    .load-more-container {
+        display: flex;
+        justify-content: center;
+        margin: 2rem 0;
+        padding: 1rem;
+    }
+    
+    .load-more-btn {
+        min-width: 200px;
+        transition: all 0.3s ease;
+    }
+    
+    .load-more-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .load-more-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+`;
+
+// Inject additional styles
+const styleSheet = document.createElement('style');
+styleSheet.textContent = additionalStyles;
+document.head.appendChild(styleSheet);
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
