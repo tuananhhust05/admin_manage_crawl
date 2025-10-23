@@ -3457,6 +3457,7 @@ def get_generated_articles():
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 20))
         fixture_id = request.args.get('fixture_id')
+        date_filter = request.args.get('date')
         
         # Validate pagination parameters
         if page < 1:
@@ -3468,6 +3469,20 @@ def get_generated_articles():
         query = {}
         if fixture_id:
             query['fixture_id'] = fixture_id
+        
+        if date_filter:
+            # Filter by date (YYYY-MM-DD format)
+            try:
+                from datetime import datetime, timedelta
+                start_date = datetime.strptime(date_filter, '%Y-%m-%d')
+                end_date = start_date + timedelta(days=1)
+                query['generated_at'] = {
+                    '$gte': start_date,
+                    '$lt': end_date
+                }
+            except ValueError:
+                # Invalid date format, ignore filter
+                pass
         
         # Calculate skip for pagination
         skip = (page - 1) * per_page
@@ -3504,7 +3519,8 @@ def get_generated_articles():
                 'has_prev': has_prev
             },
             'filters': {
-                'fixture_id': fixture_id
+                'fixture_id': fixture_id,
+                'date': date_filter
             }
         }), 200
         

@@ -142,8 +142,21 @@ class GeneratedArticlesManager {
             url.searchParams.set('page', this.currentPage);
             url.searchParams.set('per_page', this.perPage);
             
+            // Add filter parameters
+            const fixtureFilter = this.fixtureFilter.value.trim();
+            const dateFilter = this.dateFilter.value;
+            
+            if (fixtureFilter) {
+                url.searchParams.set('fixture_id', fixtureFilter);
+            }
+            if (dateFilter) {
+                url.searchParams.set('date', dateFilter);
+            }
+            
             const response = await fetch(url.toString());
             const data = await response.json();
+            
+            console.log('API Response:', data); // Debug log
             
             if (data.success) {
                 if (resetPagination) {
@@ -216,90 +229,46 @@ class GeneratedArticlesManager {
     }
     
     handleFilter() {
-        const fixtureFilter = this.fixtureFilter.value.trim().toLowerCase();
-        const dateFilter = this.dateFilter.value;
-        
-        this.filteredArticles = this.articles.filter(article => {
-            const matchesFixture = !fixtureFilter || 
-                (article.fixture_id && article.fixture_id.toLowerCase().includes(fixtureFilter));
-            
-            const matchesDate = !dateFilter || 
-                (article.generated_at && article.generated_at.startsWith(dateFilter));
-            
-            return matchesFixture && matchesDate;
-        });
-        
+        // Reset to first page and reload with filters
         this.currentPage = 1;
-        this.updatePagination();
-        this.renderArticles();
+        this.loadArticles(true);
     }
     
     clearFilters() {
         this.fixtureFilter.value = '';
         this.dateFilter.value = '';
-        this.handleFilter();
+        this.currentPage = 1;
+        this.loadArticles(true);
     }
     
+    // Legacy pagination methods - not used with new API pagination
     updatePagination() {
-        this.totalItems = this.filteredArticles.length;
-        this.totalPages = Math.ceil(this.totalItems / this.itemsPerPage);
-        
-        // Update pagination info
-        const startItem = (this.currentPage - 1) * this.itemsPerPage + 1;
-        const endItem = Math.min(this.currentPage * this.itemsPerPage, this.totalItems);
-        this.paginationInfo.textContent = `Showing ${startItem}-${endItem} of ${this.totalItems} articles`;
-        
-        // Update pagination buttons
-        this.prevPageBtn.disabled = this.currentPage <= 1;
-        this.nextPageBtn.disabled = this.currentPage >= this.totalPages;
-        
-        // Generate page numbers
-        this.generatePageNumbers();
+        // This method is kept for compatibility but not used
+        // Pagination is now handled by updatePaginationInfo()
     }
     
     generatePageNumbers() {
-        this.pageNumbers.innerHTML = '';
-        
-        const maxVisiblePages = 5;
-        let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
-        let endPage = Math.min(this.totalPages, startPage + maxVisiblePages - 1);
-        
-        if (endPage - startPage + 1 < maxVisiblePages) {
-            startPage = Math.max(1, endPage - maxVisiblePages + 1);
-        }
-        
-        for (let i = startPage; i <= endPage; i++) {
-            const pageBtn = document.createElement('button');
-            pageBtn.className = `page-btn ${i === this.currentPage ? 'active' : ''}`;
-            pageBtn.textContent = i;
-            pageBtn.addEventListener('click', () => this.goToPage(i));
-            this.pageNumbers.appendChild(pageBtn);
-        }
+        // This method is kept for compatibility but not used
+        // Page numbers are now handled by load more button
     }
     
     goToPage(page) {
-        if (page >= 1 && page <= this.totalPages) {
-            this.currentPage = page;
-            this.updatePagination();
-            this.renderArticles();
-        }
+        // This method is kept for compatibility but not used
+        // Page navigation is now handled by load more button
     }
     
     renderArticles() {
-        if (this.filteredArticles.length === 0) {
+        if (this.articles.length === 0) {
             this.showEmpty();
             return;
         }
         
         this.showArticles();
         
-        const startIndex = (this.currentPage - 1) * this.itemsPerPage;
-        const endIndex = startIndex + this.itemsPerPage;
-        const pageArticles = this.filteredArticles.slice(startIndex, endIndex);
-        
+        // Use articles directly from API (already paginated)
         this.articlesTableBody.innerHTML = '';
         
-        pageArticles.forEach(article => {
+        this.articles.forEach(article => {
             const row = this.createArticleRow(article);
             this.articlesTableBody.appendChild(row);
         });
