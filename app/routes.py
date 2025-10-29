@@ -115,12 +115,12 @@ def query_related_articles(team_names):
             }
         }
         
-        # Sort by created_at descending (gần đây nhất trước) - Giới hạn 2 bài viết
-        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(2))
+        # Sort by created_at descending (gần đây nhất trước) - Giới hạn 6 bài viết
+        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(6))
         
         logging.info(f"📰 Found {len(articles)} related articles (last 4 hours)")
         
-        # Log articles để debug (tối đa 2 bài)
+        # Log articles để debug (tối đa 6 bài)
         for i, article in enumerate(articles):
             content_preview = article.get('content', '')[:100] + "..." if len(article.get('content', '')) > 100 else article.get('content', '')
             logging.info(f"📄 Article {i+1}: {content_preview}")
@@ -222,17 +222,17 @@ def extract_team_names_with_groq(articles_data):
             try:
                 logging.info(f"🔄 Attempt {attempt + 1}/{max_retries} to extract team names")
                 
-                response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    max_tokens=200,
-                    temperature=0.1
-                )
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            max_tokens=200,
+            temperature=0.1
+        )
                 
                 # Nếu thành công, break khỏi retry loop
                 break
@@ -326,7 +326,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                     optimized_req['match_details'] = {'match': match_details['match']}
             
             # Convert datetime objects to ISO strings
-            req_copy = {}
+                req_copy = {}
             for k, v in optimized_req.items():
                 if isinstance(v, dict):
                     req_copy[k] = {}
@@ -342,11 +342,11 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                                     req_copy[k][sub_k][sub_sub_k] = sub_sub_v
                         else:
                             req_copy[k][sub_k] = sub_v
-                elif isinstance(v, datetime):
-                    req_copy[k] = v.isoformat()
-                else:
-                    req_copy[k] = v
-            
+                    elif isinstance(v, datetime):
+                        req_copy[k] = v.isoformat()
+                    else:
+                        req_copy[k] = v
+                
             if req_copy:
                 content = json.dumps(req_copy, ensure_ascii=False, indent=2)
                 articles_data.append(content)
@@ -362,7 +362,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             # Bước 1: Xác định tên các đội bóng trước
             logging.info(f"🏆 Step 1: Extracting team names for fixture_id: {fixture_id}")
             try:
-                team_names_result = extract_team_names_with_groq(articles_data)
+            team_names_result = extract_team_names_with_groq(articles_data)
                 logging.info(f"✅ Team names extraction completed: {team_names_result}")
             except Exception as e:
                 logging.error(f"❌ Error in team names extraction: {str(e)}")
@@ -379,7 +379,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             # Bước 2: Query các bài báo liên quan đến đội bóng
             logging.info(f"📰 Step 2: Querying related articles for teams: {team_names}")
             try:
-                related_articles = query_related_articles(team_names)
+            related_articles = query_related_articles(team_names)
                 logging.info(f"✅ Related articles query completed: {len(related_articles)} articles found")
             except Exception as e:
                 logging.error(f"❌ Error in related articles query: {str(e)}")
@@ -389,7 +389,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             # Bước 3: Kết hợp dữ liệu trận đấu và bài báo liên quan
             logging.info(f"🔄 Step 3: Combining match data and related articles")
             try:
-                combined_data = combine_match_and_article_data(articles_data, related_articles, team_names)
+            combined_data = combine_match_and_article_data(articles_data, related_articles, team_names)
                 logging.info(f"✅ Data combination completed: {len(combined_data)} items")
             except Exception as e:
                 logging.error(f"❌ Error in data combination: {str(e)}")
@@ -403,7 +403,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             # Generate article using Groq
             try:
                 logging.info(f"🚀 Starting Groq article generation...")
-                groq_result = generate_article_with_groq(combined_data)
+            groq_result = generate_article_with_groq(combined_data)
                 logging.info(f"✅ Groq article generation completed: {groq_result}")
             except Exception as e:
                 logging.error(f"❌ Error in Groq article generation: {str(e)}")
@@ -577,7 +577,7 @@ def extract_optimized_match_data(articles_data):
         logging.error(f"❌ Error extracting optimized match data: {str(e)}")
         return articles_data  # Fallback to original data
 
-def balance_token_usage(match_data, related_articles, max_input_tokens=5000):
+def balance_token_usage(match_data, related_articles, max_input_tokens=10000):
     """
     Cân bằng token usage giữa match data và article data
     """
@@ -610,19 +610,19 @@ def balance_token_usage(match_data, related_articles, max_input_tokens=5000):
             if hasattr(created_at, 'isoformat'):
                 created_at = created_at.isoformat()
             
-            # Giới hạn mỗi bài viết tối đa 1500 tokens
-            MAX_ARTICLE_TOKENS = 1500
+            # Giới hạn mỗi bài viết tối đa 1000 tokens (6 bài x 1000 = 6000 tokens)
+            MAX_ARTICLE_TOKENS = 1000
             
             # Ước tính token cho content
             content_tokens = estimate_tokens(content)
             
-            # Nếu content vượt quá 1500 tokens, cắt bớt
+            # Nếu content vượt quá 1000 tokens, cắt bớt
             if content_tokens > MAX_ARTICLE_TOKENS:
-                # Ước tính số ký tự có thể lấy cho 1500 tokens
+                # Ước tính số ký tự có thể lấy cho 1000 tokens
                 chars_per_token = len(content) / content_tokens if content_tokens > 0 else 4
                 max_chars = int(MAX_ARTICLE_TOKENS * chars_per_token * 0.9)  # 90% để an toàn
                 content = content[:max_chars] + "..."
-                logging.info(f"✂️ Truncated article {i+1} content to fit 1500 token limit")
+                logging.info(f"✂️ Truncated article {i+1} content to fit 1000 token limit")
             
             article_text = f"RELATED_ARTICLE_{i+1} (Source: {source}, Date: {created_at}):\n{content}"
             article_tokens = estimate_tokens(article_text)
@@ -661,7 +661,7 @@ def generate_article_with_groq(articles_data):
         
         # Token constants
         MAX_OUTPUT_TOKENS = 3000
-        MAX_INPUT_TOKENS = 5000
+        MAX_INPUT_TOKENS = 10000
         
         logging.info("🚀 Starting optimized article generation with Groq API")
         logging.info(f"📊 Input data: {len(articles_data)} items")
@@ -700,7 +700,7 @@ def generate_article_with_groq(articles_data):
         logging.info(f"🎯 Total tokens: {final_tokens}")
         logging.info(f"📈 Token efficiency: {(final_tokens/MAX_INPUT_TOKENS)*100:.1f}% of limit")
         logging.info("=" * 80)
-        
+
         # Log detailed breakdown (chỉ log summary, không log content)
         logging.info("📋 DETAILED BREAKDOWN:")
         for i, item in enumerate(final_data):
@@ -756,12 +756,12 @@ def generate_article_with_groq(articles_data):
         for attempt in range(max_retries):
             try:
                 logging.info(f"🔄 Attempt {attempt + 1}/{max_retries} to call Groq API")
-                
-                response = client.chat.completions.create(
-                    messages=[{"role": "user", "content": prompt}],
-                    model="groq/compound",
-                    max_tokens=MAX_OUTPUT_TOKENS,
-                )
+
+        response = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="groq/compound",
+            max_tokens=MAX_OUTPUT_TOKENS,
+        )
                 
                 # Nếu thành công, break khỏi retry loop
                 break
@@ -1131,8 +1131,8 @@ def get_articles():
                 'has_prev': has_prev
             },
             'filters': {
-                'selected_type': selected_type,
-                'search_query': search_query,
+            'selected_type': selected_type,
+            'search_query': search_query,
                 'available_types': unique_types
             }
         })
@@ -3512,7 +3512,7 @@ def get_generated_articles():
             'pagination': {
                 'current_page': page,
                 'per_page': per_page,
-                'total_count': total_count,
+            'total_count': total_count,
                 'total_pages': total_pages,
                 'has_next': has_next,
                 'has_prev': has_prev
