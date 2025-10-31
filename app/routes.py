@@ -297,7 +297,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         logging.info(f"⏰ Waiting 4 hours before processing...")
         
         # Delay 4 hours (4 * 60 * 60 = 14400 seconds)
-        # time.sleep(4 * 60 * 60)
+        time.sleep(4 * 60 * 60)
         
         logging.info(f"⏰ 4h delay completed, starting article generation for fixture_id: {fixture_id}")
         
@@ -3267,15 +3267,7 @@ def save_request():
         result = mongo.db.requests.insert_one(request_doc)
         
         # Xử lý đặc biệt cho event_match_end
-        # Chỉ xử lý khi có commentaries không rỗng và là mảng lớn hơn 0
-        commentaries = raw_data.get('commentaries')
-        is_valid_commentaries = (
-            commentaries is not None and
-            isinstance(commentaries, list) and
-            len(commentaries) > 0
-        )
-        
-        if raw_data.get('type') == 'event_match_end' and is_valid_commentaries:
+        if raw_data.get('type') == 'event_match_end':
             try:
                 fixture_id = raw_data.get('fixture_id')
                 if not fixture_id:
