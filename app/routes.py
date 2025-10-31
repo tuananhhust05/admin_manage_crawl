@@ -342,7 +342,9 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                                     req_copy[k][sub_k][sub_sub_k] = sub_sub_v
                         else:
                             req_copy[k][sub_k] = sub_v
-                elif isinstance(v, datetime):
+                else:
+                    req_copy[k] = v
+                if isinstance(v, datetime):
                     req_copy[k] = v.isoformat()
                 else:
                     req_copy[k] = v
