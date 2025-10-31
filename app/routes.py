@@ -342,10 +342,10 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                                     req_copy[k][sub_k][sub_sub_k] = sub_sub_v
                         else:
                             req_copy[k][sub_k] = sub_v
-                    elif isinstance(v, datetime):
-                        req_copy[k] = v.isoformat()
-                    else:
-                        req_copy[k] = v
+                elif isinstance(v, datetime):
+                    req_copy[k] = v.isoformat()
+                else:
+                    req_copy[k] = v
                 
             if req_copy:
                 content = json.dumps(req_copy, ensure_ascii=False, indent=2)
@@ -362,7 +362,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             # Bước 1: Xác định tên các đội bóng trước
             logging.info(f"🏆 Step 1: Extracting team names for fixture_id: {fixture_id}")
             try:
-            team_names_result = extract_team_names_with_groq(articles_data)
+                team_names_result = extract_team_names_with_groq(articles_data)
                 logging.info(f"✅ Team names extraction completed: {team_names_result}")
             except Exception as e:
                 logging.error(f"❌ Error in team names extraction: {str(e)}")
@@ -379,7 +379,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             # Bước 2: Query các bài báo liên quan đến đội bóng
             logging.info(f"📰 Step 2: Querying related articles for teams: {team_names}")
             try:
-            related_articles = query_related_articles(team_names)
+                related_articles = query_related_articles(team_names)
                 logging.info(f"✅ Related articles query completed: {len(related_articles)} articles found")
             except Exception as e:
                 logging.error(f"❌ Error in related articles query: {str(e)}")
@@ -389,7 +389,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             # Bước 3: Kết hợp dữ liệu trận đấu và bài báo liên quan
             logging.info(f"🔄 Step 3: Combining match data and related articles")
             try:
-            combined_data = combine_match_and_article_data(articles_data, related_articles, team_names)
+                combined_data = combine_match_and_article_data(articles_data, related_articles, team_names)
                 logging.info(f"✅ Data combination completed: {len(combined_data)} items")
             except Exception as e:
                 logging.error(f"❌ Error in data combination: {str(e)}")
@@ -403,7 +403,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
             # Generate article using Groq
             try:
                 logging.info(f"🚀 Starting Groq article generation...")
-            groq_result = generate_article_with_groq(combined_data)
+                groq_result = generate_article_with_groq(combined_data)
                 logging.info(f"✅ Groq article generation completed: {groq_result}")
             except Exception as e:
                 logging.error(f"❌ Error in Groq article generation: {str(e)}")
@@ -757,11 +757,11 @@ def generate_article_with_groq(articles_data):
             try:
                 logging.info(f"🔄 Attempt {attempt + 1}/{max_retries} to call Groq API")
 
-        response = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="groq/compound",
-            max_tokens=MAX_OUTPUT_TOKENS,
-        )
+                response = client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model="groq/compound",
+                    max_tokens=MAX_OUTPUT_TOKENS,
+                )
                 
                 # Nếu thành công, break khỏi retry loop
                 break
