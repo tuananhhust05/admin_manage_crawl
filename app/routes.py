@@ -326,7 +326,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                     optimized_req['match_details'] = {'match': match_details['match']}
             
             # Convert datetime objects to ISO strings
-                req_copy = {}
+            req_copy = {}
             for k, v in optimized_req.items():
                 if isinstance(v, dict):
                     req_copy[k] = {}
