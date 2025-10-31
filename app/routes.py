@@ -116,7 +116,7 @@ def query_related_articles(team_names):
         }
         
         # Sort by created_at descending (gần đây nhất trước) - Giới hạn 6 bài viết
-        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(6))
+        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(3))
         
         logging.info(f"📰 Found {len(articles)} related articles (last 4 hours)")
         
@@ -579,7 +579,7 @@ def extract_optimized_match_data(articles_data):
         logging.error(f"❌ Error extracting optimized match data: {str(e)}")
         return articles_data  # Fallback to original data
 
-def balance_token_usage(match_data, related_articles, max_input_tokens=10000):
+def balance_token_usage(match_data, related_articles, max_input_tokens=6000):
     """
     Cân bằng token usage giữa match data và article data
     """
