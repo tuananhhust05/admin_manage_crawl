@@ -222,17 +222,17 @@ def extract_team_names_with_groq(articles_data):
             try:
                 logging.info(f"🔄 Attempt {attempt + 1}/{max_retries} to extract team names")
                 
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            max_tokens=200,
-            temperature=0.1
-        )
+                response = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=200,
+                    temperature=0.1
+                )
                 
                 # Nếu thành công, break khỏi retry loop
                 break
@@ -3267,7 +3267,15 @@ def save_request():
         result = mongo.db.requests.insert_one(request_doc)
         
         # Xử lý đặc biệt cho event_match_end
-        if raw_data.get('type') == 'event_match_end':
+        # Chỉ xử lý khi có commentaries không rỗng và là mảng lớn hơn 0
+        commentaries = raw_data.get('commentaries')
+        is_valid_commentaries = (
+            commentaries is not None and
+            isinstance(commentaries, list) and
+            len(commentaries) > 0
+        )
+        
+        if raw_data.get('type') == 'event_match_end' and is_valid_commentaries:
             try:
                 fixture_id = raw_data.get('fixture_id')
                 if not fixture_id:
