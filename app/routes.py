@@ -116,7 +116,7 @@ def query_related_articles(team_names):
         }
         
         # Sort by created_at descending (gần đây nhất trước) - Giới hạn 6 bài viết
-        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(3))
+        articles = list(mongo.db.articles.find(query).sort('created_at', -1).limit(6))
         
         logging.info(f"📰 Found {len(articles)} related articles (last 4 hours)")
         
@@ -297,7 +297,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         logging.info(f"⏰ Waiting 4 hours before processing...")
         
         # Delay 4 hours (4 * 60 * 60 = 14400 seconds)
-        # time.sleep(4 * 60 * 60)
+        time.sleep(4 * 60 * 60)
         
         logging.info(f"⏰ 4h delay completed, starting article generation for fixture_id: {fixture_id}")
         
@@ -613,7 +613,7 @@ def balance_token_usage(match_data, related_articles, max_input_tokens=6000):
                 created_at = created_at.isoformat()
             
             # Giới hạn mỗi bài viết tối đa 1000 tokens (6 bài x 1000 = 6000 tokens)
-            MAX_ARTICLE_TOKENS = 1000
+            MAX_ARTICLE_TOKENS = 500
             
             # Ước tính token cho content
             content_tokens = estimate_tokens(content)
