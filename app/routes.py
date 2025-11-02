@@ -297,7 +297,7 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
         logging.info(f"⏰ Waiting 4 hours before processing...")
         
         # Delay 4 hours (4 * 60 * 60 = 14400 seconds)
-        # time.sleep(4 * 60 * 60)
+        time.sleep(4 * 60 * 60)
         
         logging.info(f"⏰ 4h delay completed, starting article generation for fixture_id: {fixture_id}")
         
