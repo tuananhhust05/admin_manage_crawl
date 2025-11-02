@@ -3311,7 +3311,7 @@ def save_request():
                     related_requests = list(mongo.db.requests.find({
                         'fixture_id': fixture_id,
                         'type': {'$ne': 'event_match_end'}  # Loại trừ chính request này
-                    }))
+                    }).limit(50))
                     
                     logging.info(f"📊 Found {len(related_requests)} related requests for fixture_id: {fixture_id}")
                     
