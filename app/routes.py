@@ -462,6 +462,26 @@ def process_article_generation_async(fixture_id, related_requests, request_id):
                 
                 logging.info(f"✅ Updated request {request_id} with generated article info")
                 
+                try:
+                    import requests
+                    post_url = 'http://3.106.56.62:5000/post'
+                    post_data = {
+                        'text': groq_result['article']
+                    }
+                    response = requests.post(post_url, json=post_data, headers={'Content-Type': 'application/json'}, timeout=30)
+                    
+                    if response.status_code == 200:
+                        logging.info(f"✅ Article posted successfully to {post_url}")
+                        # Có thể lưu response vào generated_article_doc nếu cần
+                        mongo.db.generated_articles.update_one(
+                            {'_id': article_result.inserted_id},
+                            {'$set': {'posted_at': datetime.utcnow(), 'post_response': response.json()}}
+                        )
+                    else:
+                        logging.warning(f"⚠️ Failed to post article: Status {response.status_code}, Response: {response.text}")
+                except Exception as e:
+                    logging.error(f"❌ Error posting article: {str(e)}")
+                    logging.error(f"📋 Traceback: {traceback.format_exc()}")
             else:
                 logging.error(f"❌ Failed to generate article: {groq_result.get('error', 'Unknown error')}")
                 
